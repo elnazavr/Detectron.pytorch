@@ -101,13 +101,13 @@ DATASETS = {
     },
     'coco_2017_train': {
         IM_DIR:
-            _DATA_DIR + '/coco/images/train2017',
+            _DATA_DIR + '/coco/train2017',
         ANN_FN:
             _DATA_DIR + '/coco/annotations/instances_train2017.json',
     },
     'coco_2017_val': {
         IM_DIR:
-            _DATA_DIR + '/coco/images/val2017',
+            _DATA_DIR + '/coco/val2017',
         ANN_FN:
             _DATA_DIR + '/coco/annotations/instances_val2017.json',
     },
@@ -209,12 +209,20 @@ DATASETS = {
         DEVKIT_DIR:
             _DATA_DIR + '/VOC2007/VOCdevkit2007'
     },
-    'voc_2012_trainval': {
+    'voc_2012_val': {
         IM_DIR:
-            _DATA_DIR + '/VOC2012/JPEGImages',
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/JPEGImages',
         ANN_FN:
-            _DATA_DIR + '/VOC2012/annotations/voc_2012_trainval.json',
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/annotations_coco_style/pascal_val2012.json',
         DEVKIT_DIR:
-            _DATA_DIR + '/VOC2012/VOCdevkit2012'
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
+    },
+    'voc_2012_train': {
+        IM_DIR:
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/JPEGImages',
+        ANN_FN:
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/annotations_coco_style/pascal_val2012.json',
+        DEVKIT_DIR:
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
     }
 }

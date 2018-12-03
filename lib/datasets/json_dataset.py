@@ -47,6 +47,8 @@ from .dataset_catalog import DATASETS
 from .dataset_catalog import IM_DIR
 from .dataset_catalog import IM_PREFIX
 
+from database.feature_entry import FeatureEntry
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +119,11 @@ class JsonDataset(object):
             proposal_file=None,
             min_proposal_size=2,
             proposal_limit=-1,
-            crowd_filter_thresh=0
+            crowd_filter_thresh=0,
+            feature_db = None,
+            ground_truth_roidb=None,
+            image_to_idx=None,
+            last_row_idx=None
         ):
         """Return an roidb corresponding to the json dataset. Optionally:
            - include ground truth boxes in the roidb
@@ -158,6 +164,19 @@ class JsonDataset(object):
                     with open(cache_filepath, 'wb') as fp:
                         pickle.dump(roidb, fp, pickle.HIGHEST_PROTOCOL)
                     logger.info('Cache ground truth roidb to %s', cache_filepath)
+            dataset_id = 1
+            if feature_db is not None:
+                for roi in roidb:
+                    image_id = int(os.path.splitext(os.path.basename(roi["image"]))[0])
+                    image_to_idx[image_id] = last_row_idx
+                    for i in range(len(roi["gt_classes"])):
+                        bbox = roi["boxes"][i]
+                        class_id = [roi["gt_classes"][i]]
+                        feature_db[last_row_idx, :7] = np.append(np.append(image_id, dataset_id), np.append(class_id, bbox))
+                        last_row_idx+=1
+                    ground_truth_roidb.append(roi)
+
+
         if proposal_file is not None:
             # Include proposals from a file
             self.debug_timer.tic()
@@ -170,7 +189,8 @@ class JsonDataset(object):
                 format(self.debug_timer.toc(average=False))
             )
         _add_class_assignments(roidb)
-        return roidb
+        print("After class assignment", len(roidb))
+        return roidb, last_row_idx
 
     def _prep_roidb_entry(self, entry):
         """Adds empty metadata fields to an roidb entry."""
@@ -319,6 +339,7 @@ class JsonDataset(object):
             entry['box_to_gt_ind_map'] = np.append(
                 entry['box_to_gt_ind_map'], box_to_gt_ind_map
             )
+            #entry["image"] = np.append(entry["image"], image)
             if self.keypoints is not None:
                 entry['gt_keypoints'] = np.append(
                     entry['gt_keypoints'], gt_keypoints, axis=0
