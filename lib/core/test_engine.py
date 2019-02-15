@@ -143,7 +143,8 @@ def test_net_on_dataset(
         proposal_file,
         output_dir,
         multi_gpu=False,
-        gpu_id=0):
+        gpu_id=0,
+        only_existed_class=True):
     """Run inference on a dataset."""
     dataset = JsonDataset(dataset_name)
     test_timer = Timer()
@@ -159,6 +160,8 @@ def test_net_on_dataset(
         )
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
+    if only_existed_class:
+        import ipdb; ipdb.set_trace()
     results = task_evaluation.evaluate_all(
         dataset, all_boxes, all_segms, all_keyps, output_dir
     )
@@ -229,6 +232,8 @@ def test_net(
     roidb, dataset, start_ind, end_ind, total_num_images = get_roidb_and_dataset(
         dataset_name, proposal_file, ind_range
     )
+    roidb = roidb[0]
+    print("Length of roidb", len(roidb))
     model = initialize_model_from_cfg(args, gpu_id=gpu_id)
     num_images = len(roidb)
     num_classes = cfg.MODEL.NUM_CLASSES
@@ -248,7 +253,6 @@ def test_net(
             # Faster R-CNN type models generate proposals on-the-fly with an
             # in-network RPN; 1-stage models don't require proposals.
             box_proposals = None
-
         im = cv2.imread(entry['image'])
         cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers)
 

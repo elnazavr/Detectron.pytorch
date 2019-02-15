@@ -153,6 +153,18 @@ def clip_tiled_boxes(boxes, im_shape):
     return boxes
 
 
+def bbox_transform_xywh_to_lvl_map(xywh, lvl):
+    power = lvl - 1
+    return [i / power ** 2 for i in xywh]
+
+
+def bbox_transform_xyxy_to_lvl_map(xyxy, lvl):
+    xywh = xyxy_to_xywh(xyxy)
+    xywh_transformed = bbox_transform_xywh_to_lvl_map(xywh, lvl)
+    xyxy = xywh_to_xyxy(xywh_transformed)
+    return xyxy
+
+
 def bbox_transform(boxes, deltas, weights=(1.0, 1.0, 1.0, 1.0)):
     """Forward transform that maps proposal boxes to predicted ground-truth
     boxes using bounding-box regression deltas. See bbox_transform_inv for a
@@ -174,7 +186,7 @@ def bbox_transform(boxes, deltas, weights=(1.0, 1.0, 1.0, 1.0)):
     dw = deltas[:, 2::4] / ww
     dh = deltas[:, 3::4] / wh
 
-    # Prevent sending too large values into np.exp()
+    # Prevent sending too large values into np.exp()a
     dw = np.minimum(dw, cfg.BBOX_XFORM_CLIP)
     dh = np.minimum(dh, cfg.BBOX_XFORM_CLIP)
 

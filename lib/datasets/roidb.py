@@ -34,23 +34,29 @@ from .json_dataset import JsonDataset
 logger = logging.getLogger(__name__)
 
 
-def combined_roidb_for_training(dataset_names, proposal_files):
+def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None, ground_truth_roidb=None, image_to_idx=None):
     """Load and concatenate roidbs for one or more datasets, along with optional
     object proposals. The roidb entries are then prepared for use in training,
     which involves caching certain types of metadata for each roidb entry.
     """
-    def get_roidb(dataset_name, proposal_file):
+    def get_roidb(dataset_name, proposal_file, last_row_idx):
         ds = JsonDataset(dataset_name)
-        roidb = ds.get_roidb(
+        print(last_row_idx)
+        roidb, last_row_idx = ds.get_roidb(
             gt=True,
             proposal_file=proposal_file,
-            crowd_filter_thresh=cfg.TRAIN.CROWD_FILTER_THRESH
+            crowd_filter_thresh=cfg.TRAIN.CROWD_FILTER_THRESH,
+            feature_db = feature_db,
+            ground_truth_roidb = ground_truth_roidb,
+            image_to_idx = image_to_idx,
+            last_row_idx = last_row_idx
         )
-        if cfg.TRAIN.USE_FLIPPED:
+        #if cfg.TRAIN.USE_FLIPPED:
+        if False:
             logger.info('Appending horizontally-flipped training examples...')
             extend_with_flipped_entries(roidb, ds)
         logger.info('Loaded dataset: {:s}'.format(ds.name))
-        return roidb
+        return roidb, last_row_idx
 
     if isinstance(dataset_names, six.string_types):
         dataset_names = (dataset_names, )
@@ -59,12 +65,17 @@ def combined_roidb_for_training(dataset_names, proposal_files):
     if len(proposal_files) == 0:
         proposal_files = (None, ) * len(dataset_names)
     assert len(dataset_names) == len(proposal_files)
-    roidbs = [get_roidb(*args) for args in zip(dataset_names, proposal_files)]
+    roidbs = []
+    last_row_idx = 0
+    for args in zip(dataset_names, proposal_files):
+        roidb, last_row_idx = get_roidb(*args, last_row_idx=last_row_idx)
+        roidbs.append(roidb)
+    if feature_db is not None:
+        feature_db = feature_db[:last_row_idx, :]
     roidb = roidbs[0]
     for r in roidbs[1:]:
         roidb.extend(r)
     roidb = filter_for_training(roidb)
-
     if cfg.TRAIN.ASPECT_GROUPING or cfg.TRAIN.ASPECT_CROPPING:
         logger.info('Computing image aspect ratios and ordering the ratios...')
         ratio_list, ratio_index = rank_for_training(roidb)
@@ -78,10 +89,10 @@ def combined_roidb_for_training(dataset_names, proposal_files):
 
     _compute_and_log_stats(roidb)
 
-    return roidb, ratio_list, ratio_index
+    return roidb, ratio_list, ratio_index, feature_db
 
 
-def extend_with_flipped_entries(roidb, dataset):
+def extend_with_flipped_entries(roidb, dataset, la):
     """Flip each entry in the given roidb and return a new roidb that is the
     concatenation of the original roidb and the flipped entries.
 
@@ -113,6 +124,8 @@ def extend_with_flipped_entries(roidb, dataset):
             )
         flipped_entry['flipped'] = True
         flipped_roidb.append(flipped_entry)
+
+
     roidb.extend(flipped_roidb)
 
 

@@ -71,6 +71,9 @@ class DataParallel(Module):
         self.minibatch = minibatch
         self.batch_outputs = batch_outputs
 
+    def bbox_features(self, *inputs, **kwargs):
+        return self.module.bbox_features(*inputs, **kwargs)
+
     def forward(self, *inputs, **kwargs):
         if not self.device_ids:
             return self.module(*inputs, **kwargs)

@@ -224,5 +224,63 @@ DATASETS = {
             _DATA_DIR + '/voc/VOCdevkit/VOC2012/annotations_coco_style/pascal_val2012.json',
         DEVKIT_DIR:
             _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
+    },
+    'coco2017voc2012_train' : {
+        IM_DIR:
+            _DATA_DIR + '/cocovoc/images',
+        ANN_FN:
+            _DATA_DIR + '/cocovoc/annotations/coco2017voc2012_train.json',
+        DEVKIT_DIR:
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
+    },
+    'coco2017voc2012_val': {
+        IM_DIR:
+            _DATA_DIR + '/cocovoc/images',
+        ANN_FN:
+            _DATA_DIR + '/cocovoc/annotations/coco2017voc2012_train.json',
+        DEVKIT_DIR:
+            _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
+    },
+    'coco2017_part0_val': {
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/0_val.json'
+    },
+    'coco2017_part0_train': {
+        IM_DIR:
+            _DATA_DIR + '/coco/train2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/0_train.json'
+    },
+    'coco2017_part1_val': {
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/1_val.json'
+    },
+    'coco2017_part1_train': {
+        IM_DIR:
+            _DATA_DIR + '/coco/train2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/1_train.json'
+    },
+    'coco2017_part2_val': {
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/2_val.json'
+    },
+    'coco2017_part2_train': {
+        IM_DIR:
+            _DATA_DIR + '/coco/train2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/2_train.json'
+    },
+    'coco2017_debug': {
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/annotations/debug_instances_val2017.json'
     }
 }

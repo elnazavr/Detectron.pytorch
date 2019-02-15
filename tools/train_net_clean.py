@@ -25,12 +25,11 @@ import utils.misc as misc_utils
 from core.config import cfg, cfg_from_file, cfg_from_list, assert_and_infer_cfg
 from datasets.roidb import combined_roidb_for_training
 from modeling.model_builder import Generalized_RCNN
-from roi_data.loader import RoiDataLoader, MinibatchSampler, collate_minibatch, collate_minibatch2
+from roi_data.loader import RoiDataLoader, MinibatchSampler, collate_minibatch
 from utils.detectron_weight_helper import load_detectron_weight
 from utils.logging import log_stats
 from utils.timer import Timer
 from utils.training_stats import TrainingStats
-from database.feature_entry import Database
 
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -108,7 +107,7 @@ def parse_args():
     parser.add_argument(
         '--epochs', dest='num_epochs',
         help='Number of epochs to train',
-        default=-1, type=int)
+        default=6, type=int)
 
     # Resume training: requires same iterations per epoch
     parser.add_argument(
@@ -134,12 +133,7 @@ def parse_args():
         '--use_tfboard', help='Use tensorflow tensorboard to log training info',
         action='store_true')
 
-    parser.add_argument(
-        '--bbbp', help='Use tensorflow tensorboard to log training info',
-        action='store_true')
-
     return parser.parse_args()
-
 
 
 def main():
@@ -157,13 +151,18 @@ def main():
     else:
         raise ValueError("Need Cuda device to run !")
 
+    if cfg.TRAIN.DATASETS is None or cfg.MODEL.NUM_CLASSES is None:
+        raise ValueError("Unexpected args.dataset: {}".format(args.dataset))
+
+    output_dir = cfg.OUTPUT_DIR
+    if output_dir is None:
+        raise ValueError("Output dir is not detected in cfg")
 
     cfg_from_file(args.cfg_file)
     if args.set_cfgs is not None:
         cfg_from_list(args.set_cfgs)
 
-
-    ### Adaptively adjust some configs ##
+    ### Adaptively adjust some configs ###
     original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
     if args.batch_size is None:
         args.batch_size = original_batch_size
@@ -185,9 +184,6 @@ def main():
     print('Adjust BASE_LR linearly according to batch size change: {} --> {}'.format(
         old_base_lr, cfg.SOLVER.BASE_LR))
 
-    if len(cfg.TRAIN.DATASETS)==0 or cfg.MODEL.NUM_CLASSES is None:
-        raise ValueError("There is no dataset in cfg train")
-
     ### Overwrite some solver settings from command line arguments
     if args.optimizer is not None:
         cfg.SOLVER.TYPE = args.optimizer
@@ -196,59 +192,27 @@ def main():
     if args.lr_decay_gamma is not None:
         cfg.SOLVER.GAMMA = args.lr_decay_gamma
 
-    output_dir = cfg.OUTPUT_DIR
-    args.run_name = misc_utils.get_run_name()
-    if output_dir is None:
-        raise ValueError("Output dir is not detected in cfg")
-
     timers = defaultdict(Timer)
 
     ### Dataset ###
     timers['roidb'].tic()
-    feature_db = np.empty((860001,1031), dtype=np.float32)
-    image_to_idx = {}
-    """
-    labels: Image_id 0 , Dataset 1, Class 2, Bbox 3, feature
-    dim: 1, 1, 1, 4, 1024 = 1031
-    """
-    ground_truth_roidb =[]
-    roidb, ratio_list, ratio_index, feature_db = combined_roidb_for_training(
-        cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
-        ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
-    import ipdb; ipdb.set_trace()
-    #np.save(os.path.join(output_dir, "roidb_initial" + ".pkl"), roidb)
-    #np.save(os.path.join(output_dir, "feature_db_val_initial" + ".pkl"), feature_db)
-
+    roidb, ratio_list, ratio_index = combined_roidb_for_training(
+        cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES)
     timers['roidb'].toc()
     train_size = len(roidb)
     logger.info('{:d} roidb entries'.format(train_size))
     logger.info('Takes %.2f sec(s) to construct roidb', timers['roidb'].average_time)
 
-
     sampler = MinibatchSampler(ratio_list, ratio_index)
-
     dataset = RoiDataLoader(
         roidb,
         cfg.MODEL.NUM_CLASSES,
         training=True)
-
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
         sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-        collate_fn=collate_minibatch)
-
-    dataset_groundtruth = RoiDataLoader(
-        roidb= roidb,
-        num_classes=cfg.MODEL.NUM_CLASSES,
-        training=False
-    )
-    dataloader_groundtruth = torch.utils.data.DataLoader(
-        dataset_groundtruth,
-        batch_size=args.batch_size,
-        sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
+        num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
 
     assert_and_infer_cfg()
@@ -289,9 +253,8 @@ def main():
         checkpoint = torch.load(load_name, map_location=lambda storage, loc: storage)
         net_utils.load_ckpt(maskRCNN, checkpoint['model'])
         if args.resume:
-            print(checkpoint['iters_per_epoch'], train_size // args.batch_size)
-            #assert checkpoint['iters_per_epoch'] == train_size // args.batch_size, \
-            #    "iters_per_epoch should match for resume"
+            assert checkpoint['iters_per_epoch'] == train_size // args.batch_size, \
+                "iters_per_epoch should match for resume"
             # There is a bug in optimizer.load_state_dict on Pytorch 0.3.1.
             # However it's fixed on master.
             # optimizer.load_state_dict(checkpoint['optimizer'])
@@ -317,11 +280,9 @@ def main():
     maskRCNN = mynn.DataParallel(maskRCNN, cpu_keywords=['im_info', 'roidb'],
                                  minibatch=True)
 
-    print(maskRCNN)
     ### Training Setups ###
-    #args.run_name = misc_utils.get_run_name()
-    #output_dir = misc_utils.get_output_dir(args, args.run_name)
-
+    args.run_name = misc_utils.get_run_name()
+    output_dir = misc_utils.get_output_dir(args, args.run_name)
     args.cfg_filename = os.path.basename(args.cfg_file)
 
     if not args.no_save:
@@ -348,18 +309,11 @@ def main():
     iters_per_epoch = int(train_size / args.batch_size)  # drop last
     args.iters_per_epoch = iters_per_epoch
     ckpt_interval_per_epoch = iters_per_epoch // args.ckpt_num_per_epoch
-    if args.num_epochs==-1:
-        number_epochs = (cfg.SOLVER.MAX_ITER // iters_per_epoch)
-    else:
-        number_epochs = args.num_epochs
-
-    print("Total number of epochs: ", number_epochs)
-
     try:
         logger.info('Training starts !')
         args.step = args.start_iter
         global_step = iters_per_epoch * args.start_epoch + args.step
-        for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
+        for args.epoch in range(args.start_epoch, args.start_epoch + args.num_epochs):
             # ---- Start of epoch ----
 
             # adjust learning rate
@@ -367,86 +321,21 @@ def main():
                 args.lr_decay_epochs.pop(0)
                 net_utils.decay_learning_rate(optimizer, lr, cfg.SOLVER.GAMMA)
                 lr *= cfg.SOLVER.GAMMA
+
             for args.step, input_data in zip(range(args.start_iter, iters_per_epoch), dataloader):
+
                 for key in input_data:
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
+
                 training_stats.IterTic()
-                input_data['only_bbox'] = [False]
                 net_outputs = maskRCNN(**input_data)
-                preidcted_classes = net_outputs["faiss_db"]["class"]
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
-                preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
-                preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                foreground = net_outputs['faiss_db']["foreground"]
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 training_stats.IterToc()
-                print("Finishing training part")
-                N_rows, N_columns = feature_db.shape
-                N_added = 0
-                images = []
-
-
-                import utils.blob as blob_utils
-                if args.bbbp:
-                    if args.step % 5000 == 0: # and args.step!=0
-                        k = 0
-                        for val_data in zip(dataloader_groundtruth):
-                            output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
-                            print("Iteration", k)
-                            #mport ipdb; ipdb.set_trace()
-                            val_data = val_data[0]
-                            for key in val_data:
-                                if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
-                                    val_data[key] = list(map(Variable, val_data[key]))
-                            roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
-                            if 327701 in [int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0]) for i in range(len(roidb))]:
-                                import ipdb;
-                                ipdb.set_trace()
-                            val_data["only_bbox"] = [True]
-                            val_data["image_to_idx"] = [image_to_idx]
-                            net_val_outputs = maskRCNN(**val_data)
-                            ground_truth_outputs = net_val_outputs['ground_truth']
-                            for i in ground_truth_outputs.keys():
-                                image_idx = ground_truth_outputs[i]["image"][0].item()
-                                if image_idx in images:
-                                    continue
-                                images.append(image_idx)
-                                bboxes_gt = ground_truth_outputs[i]["bbox"].numpy()
-                                N_instances = len(bboxes_gt)
-                                features_gt = ground_truth_outputs[i]["features"].data.cpu().numpy().astype("float32")
-                                for feature in features_gt:
-                                    if (feature == np.zeros(1024)).all():
-                                        import ipdb; ipdb.set_trace()
-                                classes = ground_truth_outputs[i]["classes"].numpy()
-                                classes = [[cl] for cl in classes]
-                                db_idx = image_to_idx[image_idx]
-                                #import ipdb; ipdb.set_trace()
-                                if not (feature_db[db_idx: db_idx + N_instances, 7:]==np.zeros((N_instances, 1024))).all():
-                                    import ipdb; ipdb.set_trace()
-                                if not int(feature_db[db_idx,0])==image_idx:
-                                    import ipdb; ipdb.set_trace()
-                                feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt,features_gt], axis=1)
-                                not_zeros = np.sum(np.all(np.equal(feature_db[:, 7:], np.zeros(shape=(N_rows, N_columns-7))), axis=1))
-                                N_added += N_instances
-                                if N_rows - (not_zeros + N_added)!=0:
-                                    print(N_rows, not_zeros, N_added)
-                                    import ipdb; ipdb.set_trace()
-                            k+=len(ground_truth_outputs)
-                            if k%500==0:
-                                print("Dumping it to pickle file ", output_path)
-                                np.save(output_path, feature_db)
-                        print("Dumping it to pickle file ", output_path)
-                        np.save(output_path, feature_db)
-                        with open(output_path+".pkl", "wb") as f:
-                            pickle.dump(feature_db, f)
-                        print("Done working with database")
-                        sys.exit(1)
-
 
                 if (args.step+1) % ckpt_interval_per_epoch == 0:
                     net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
@@ -455,8 +344,6 @@ def main():
                     log_training_stats(training_stats, global_step, lr)
 
                 global_step += 1
-
-
 
             # ---- End of epoch ----
             # save checkpoint

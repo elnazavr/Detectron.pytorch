@@ -114,7 +114,6 @@ class single_scale_rpn_outputs(nn.Module):
 
             return_dict['rpn_rois'] = rpn_rois
             return_dict['rpn_roi_probs'] = rpn_rois_prob
-
         if cfg.MODEL.FASTER_RCNN :
             if self.training:
                 # Add op that generates training labels for in-network RPN proposals

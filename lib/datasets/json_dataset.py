@@ -16,7 +16,7 @@
 """Representation of the standard COCO json dataset format.
 
 When working with a new dataset, we strongly suggest to convert the dataset into
-the COCO json format and use the existing code; it is not recommended to write
+the COCO jsOn format and use the existing code; it is not recommended to write
 code to support new dataset formats.
 """
 
@@ -166,14 +166,19 @@ class JsonDataset(object):
                     logger.info('Cache ground truth roidb to %s', cache_filepath)
             dataset_id = 1
             if feature_db is not None:
-                for roi in roidb:
+                for idx, roi in enumerate(roidb):
                     image_id = int(os.path.splitext(os.path.basename(roi["image"]))[0])
-                    image_to_idx[image_id] = last_row_idx
+                    if image_id == 327701:
+                        import ipdb; ipdb.set_trace()
+                    if last_row_idx in image_to_idx.values():
+                        import ipdb; ipdb.set_trace()
+                    if len(roi["gt_classes"])>0:
+                        image_to_idx[image_id] = last_row_idx
                     for i in range(len(roi["gt_classes"])):
                         bbox = roi["boxes"][i]
                         class_id = [roi["gt_classes"][i]]
-                        feature_db[last_row_idx, :7] = np.append(np.append(image_id, dataset_id), np.append(class_id, bbox))
-                        last_row_idx+=1
+                        feature_db[last_row_idx, : 7] = np.append(np.append(image_id, dataset_id), np.append(class_id, bbox))
+                        last_row_idx +=1
                     ground_truth_roidb.append(roi)
 
 

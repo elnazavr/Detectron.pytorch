@@ -1,11 +1,14 @@
 from functools import wraps
 import importlib
 import logging
+import numpy as np
+import os
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+import faiss
 
 from core.config import cfg
 from model.roi_pooling.functions.roi_pool import RoIPoolFunction
@@ -18,7 +21,8 @@ import modeling.keypoint_rcnn_heads as keypoint_rcnn_heads
 import utils.blob as blob_utils
 import utils.net as net_utils
 import utils.resnet_weights_helper as resnet_utils
-
+import utils.fpn as fpn_utils
+import utils.boxes as box_utils
 logger = logging.getLogger(__name__)
 
 
@@ -136,25 +140,61 @@ class Generalized_RCNN(nn.Module):
             for p in self.Conv_Body.parameters():
                 p.requires_grad = False
 
-    def forward(self, data, im_info, roidb=None, **rpn_kwargs):
+    def forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
         if cfg.PYTORCH_VERSION_LESS_THAN_040:
-            return self._forward(data, im_info, roidb, **rpn_kwargs)
+            return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
         else:
             with torch.set_grad_enabled(self.training):
-                return self._forward(data, im_info, roidb, **rpn_kwargs)
+                return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
 
-    def _forward(self, data, im_info, roidb=None, **rpn_kwargs):
+
+    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
         im_data = data
-        if self.training:
+        if self.training or only_bbox:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
 
         device_id = im_data.get_device()
 
         return_dict = {}  # A dict to collect return variables
-
+        return_dict['faiss_db'] = {}
+        return_dict["ground_truth"] = {}
         blob_conv = self.Conv_Body(im_data)
+        if not only_bbox:
+            rpn_ret = self.RPN(blob_conv, im_info, roidb)
+        else:
+            lvl_min = cfg.FPN.ROI_MIN_LEVEL
+            lvl_max = cfg.FPN.ROI_MAX_LEVEL
+            if cfg.FPN.FPN_ON:
+                # Retain only the blobs that will be used for RoI heads. `blob_conv` may include
+                # extra blobs that are used for RPN proposals, but not for RoI heads.
+                blob_conv = blob_conv[-self.num_roi_levels:]
+            for i in range(len(roidb)):
+                rpn_ret = {}
+                return_dict["ground_truth"][i] = {}
+                for lvl in range(lvl_min, lvl_max + 1):
+                    rpn_ret["rois_fpn" + str(lvl)] = []
+                #roidb_des  = blob_utils.deserialize(roidb[i])[0]
+                #if int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])==327701:
+                #    import ipdb; ipdb.set_trace()
+                target_lvls = fpn_utils.map_rois_to_fpn_levels(roidb[i]["boxes"],lvl_min, lvl_max)
+                #fpn_utils.add_multilevel_roi_blobs(rpn_ret, 'rois', roidb[i]["boxes"], target_lvls, lvl_min,lvl_max)
+                boxes = np.array(list(map(lambda x: np.append([i], x), roidb[i]["boxes"])))
+                fpn_utils.add_multilevel_roi_blobs(rpn_ret, 'rois', boxes, target_lvls, lvl_min, lvl_max)
+                for key in rpn_ret.keys():
+                    rpn_ret[key] = np.array(rpn_ret[key])
+                #rpn_ret["rois_idx_restore_int32"] = np.array(range(len(target_lvls)))
+                #import ipdb; ipdb.set_trace()
 
-        rpn_ret = self.RPN(blob_conv, im_info, roidb)
+                box_feat = self.Box_Head(blob_conv, rpn_ret)
+                return_dict["ground_truth"][i]["features"] = box_feat
+
+                #import ipdb; ipdb.set_trace()
+                return_dict["ground_truth"][i]["bbox"] = roidb[i]["boxes"]
+                return_dict["ground_truth"][i]["classes"] = roidb[i]["gt_classes"]
+                return_dict["ground_truth"][i]["image"] = int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])
+            return return_dict
+
+
 
         # if self.training:
         #     # can be used to infer fg/bg ratio
@@ -167,13 +207,21 @@ class Generalized_RCNN(nn.Module):
 
         if not self.training:
             return_dict['blob_conv'] = blob_conv
-
         if not cfg.MODEL.RPN_ONLY:
             if cfg.MODEL.SHARE_RES5 and self.training:
                 box_feat, res5_feat = self.Box_Head(blob_conv, rpn_ret)
             else:
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
             cls_score, bbox_pred = self.Box_Outs(box_feat)
+
+            cls_score_np = cls_score.detach().cpu().numpy()
+            if self.training:
+                return_dict['faiss_db']['bbox_feat'] = box_feat
+                return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
+                return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
+                deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
+                return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
+                return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
         else:
             # TODO: complete the returns for RPN only situation
             pass
@@ -246,6 +294,7 @@ class Generalized_RCNN(nn.Module):
             return_dict['rois'] = rpn_ret['rois']
             return_dict['cls_score'] = cls_score
             return_dict['bbox_pred'] = bbox_pred
+            return_dict['box_feat'] = box_feat
 
         return return_dict
 
@@ -287,10 +336,11 @@ class Generalized_RCNN(nn.Module):
                         if cfg.CROP_RESIZE_WITH_MAX_POOL:
                             xform_out = F.max_pool2d(xform_out, 2, 2)
                     elif method == 'RoIAlign':
+                        if rois.type()== 'torch.cuda.DoubleTensor':
+                            rois = rois.type(torch.cuda.FloatTensor)
                         xform_out = RoIAlignFunction(
                             resolution, resolution, sc, sampling_ratio)(bl_in, rois)
                     bl_out_list.append(xform_out)
-
             # The pooled features from all levels are concatenated along the
             # batch dimension into a single 4D tensor.
             xform_shuffled = torch.cat(bl_out_list, dim=0)
@@ -367,3 +417,37 @@ class Generalized_RCNN(nn.Module):
     def _add_loss(self, return_dict, key, value):
         """Add loss tensor to returned dictionary"""
         return_dict['losses'][key] = value
+
+
+
+def find_threhold_for_each_class(db, classes,  k_neighbours=10):
+    index = create_db(db)
+    distance, indecies = index.search(db, k_neighbours)
+    classes_idx = classes[indecies]
+    average_distance_sample = []
+    for idx, neighbours in enumerate(classes_idx):
+        myself = neighbours[0]
+        not_class_neighbours = np.where(neighbours!=myself)[0]
+        first_not_class_neighbours = not_class_neighbours[0]
+        average_distance_sample.append(distance[idx, first_not_class_neighbours])
+    average_distance_sample = np.array(average_distance_sample)
+    average_distance_class = {}
+    for class_idx in set(classes):
+        average_distance_class[class_idx] = np.median(average_distance_sample[np.where(classes==class_idx)])
+    return average_distance_class
+
+
+def create_db(db):
+    dimension = 1024
+    db = db.astype('float32')
+    faiss_db = faiss.IndexFlatL2(dimension)
+    faiss_db.add(db)
+    return faiss_db
+
+
+def find_closest_class_for_background(faiss_db, db,  looked_features, threholds,  k_neighbours=10):
+    distance, indecies = faiss_db.search(looked_features, k_neighbours)
+    
+
+
+

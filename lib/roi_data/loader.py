@@ -42,11 +42,11 @@ class RoiDataLoader(data.Dataset):
             valid_inds = np.nonzero(~ invalid)[0]
             if len(valid_inds) < len(boxes):
                 for key in ['boxes', 'gt_classes', 'seg_areas', 'gt_overlaps', 'is_crowd',
-                            'box_to_gt_ind_map', 'gt_keypoints']:
+                            'box_to_gt_ind_map', 'gt_keypoints', "image"]:
+
                     if key in entry:
                         entry[key] = entry[key][valid_inds]
                 entry['segms'] = [entry['segms'][ind] for ind in valid_inds]
-
         blobs['roidb'] = blob_utils.serialize(blobs['roidb'])  # CHECK: maybe we can serialize in collate_fn
 
         return blobs
@@ -242,6 +242,28 @@ def collate_minibatch(list_of_blobs):
         mini_list = pad_image_data(mini_list)
         minibatch = default_collate(mini_list)
         minibatch['roidb'] = list_of_roidb[i:(i + cfg.TRAIN.IMS_PER_BATCH)]
+        for key in minibatch:
+            Batch[key].append(minibatch[key])
+
+    return Batch
+
+
+def collate_minibatch2(list_of_blobs):
+    """Stack samples seperately and return a list of minibatches
+    A batch contains NUM_GPUS minibatches and image size in different minibatch may be different.
+    Hence, we need to stack smaples from each minibatch seperately.
+    """
+    batch_size = 2
+    Batch = {key: [] for key in list_of_blobs[0]}
+    # Because roidb consists of entries of variable length, it can't be batch into a tensor.
+    # So we keep roidb in the type of "list of ndarray".
+    list_of_roidb = [blobs.pop('roidb') for blobs in list_of_blobs]
+    for i in range(0, len(list_of_blobs), batch_size):
+        mini_list = list_of_blobs[i:(i + batch_size)]
+        # Pad image data
+        mini_list = pad_image_data(mini_list)
+        minibatch = default_collate(mini_list)
+        minibatch['roidb'] = list_of_roidb[i:(i + batch_size)]
         for key in minibatch:
             Batch[key].append(minibatch[key])
 

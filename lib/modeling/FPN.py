@@ -404,8 +404,8 @@ class fpn_rpn_outputs(nn.Module):
                 else:  # sigmoid
                     fpn_rpn_cls_probs = F.sigmoid(fpn_rpn_cls_score)
 
-                fpn_rpn_rois, fpn_rpn_roi_probs = self.GenerateProposals_modules[lvl - k_min](
-                    fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info)
+
+                fpn_rpn_rois, fpn_rpn_roi_probs = self.GenerateProposals_modules[lvl - k_min](fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info)
                 rois_blobs.append(fpn_rpn_rois)
                 score_blobs.append(fpn_rpn_roi_probs)
                 return_dict['rpn_rois_fpn' + slvl] = fpn_rpn_rois

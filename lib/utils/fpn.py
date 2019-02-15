@@ -49,9 +49,7 @@ def add_multilevel_roi_blobs(
         idx_lvl = np.where(target_lvls == lvl)[0]
         blobs[blob_prefix + '_fpn' + str(lvl)] = rois[idx_lvl, :]
         rois_idx_order = np.concatenate((rois_idx_order, idx_lvl))
-        rois_stacked = np.vstack(
-            [rois_stacked, blobs[blob_prefix + '_fpn' + str(lvl)]]
-        )
+        rois_stacked = np.vstack([rois_stacked, blobs[blob_prefix + '_fpn' + str(lvl)]])
     rois_idx_restore = np.argsort(rois_idx_order).astype(np.int32, copy=False)
     blobs[blob_prefix + '_idx_restore_int32'] = rois_idx_restore
     # Sanity check that restore order is correct
