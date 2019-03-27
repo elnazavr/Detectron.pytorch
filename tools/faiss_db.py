@@ -38,3 +38,5 @@ def create_db_exact_NN(db):
     faiss_db = faiss.IndexFlatL2(dimension)
     faiss_db.add(db)
     return faiss_db
+
+
