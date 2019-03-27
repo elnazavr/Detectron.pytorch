@@ -47,7 +47,6 @@ from .dataset_catalog import DATASETS
 from .dataset_catalog import IM_DIR
 from .dataset_catalog import IM_PREFIX
 
-from database.feature_entry import FeatureEntry
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ class JsonDataset(object):
         so we don't need to overwrite it again.
         """
         keys = ['boxes', 'segms', 'gt_classes', 'seg_areas', 'gt_overlaps',
-                'is_crowd', 'box_to_gt_ind_map']
+                'is_crowd', 'box_to_gt_ind_map', 'dataset_idx']
         if self.keypoints is not None:
             keys += ['gt_keypoints', 'has_visible_keypoints']
         return keys
@@ -123,8 +122,11 @@ class JsonDataset(object):
             feature_db = None,
             ground_truth_roidb=None,
             image_to_idx=None,
-            last_row_idx=None
-        ):
+            last_row_idx=None,
+            dataset_idx= 0,
+            dataset_to_classes = {}
+
+    ):
         """Return an roidb corresponding to the json dataset. Optionally:
            - include ground truth boxes in the roidb
            - add proposals specified in a proposals file
@@ -135,6 +137,7 @@ class JsonDataset(object):
             'Crowd filter threshold must be 0 if ground-truth annotations ' \
             'are not included.'
         image_ids = self.COCO.getImgIds()
+        dataset_to_classes[dataset_idx] = set()
         image_ids.sort()
         if cfg.DEBUG:
             roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))[:100]
@@ -156,6 +159,7 @@ class JsonDataset(object):
                 self.debug_timer.tic()
                 for entry in roidb:
                     self._add_gt_annotations(entry)
+                    entry["dataset_idx"] = dataset_idx
                 logger.debug(
                     '_add_gt_annotations took {:.3f}s'.
                     format(self.debug_timer.toc(average=False))
@@ -164,20 +168,18 @@ class JsonDataset(object):
                     with open(cache_filepath, 'wb') as fp:
                         pickle.dump(roidb, fp, pickle.HIGHEST_PROTOCOL)
                     logger.info('Cache ground truth roidb to %s', cache_filepath)
-            dataset_id = 1
             if feature_db is not None:
                 for idx, roi in enumerate(roidb):
                     image_id = int(os.path.splitext(os.path.basename(roi["image"]))[0])
-                    if image_id == 327701:
-                        import ipdb; ipdb.set_trace()
                     if last_row_idx in image_to_idx.values():
                         import ipdb; ipdb.set_trace()
                     if len(roi["gt_classes"])>0:
                         image_to_idx[image_id] = last_row_idx
                     for i in range(len(roi["gt_classes"])):
                         bbox = roi["boxes"][i]
-                        class_id = [roi["gt_classes"][i]]
-                        feature_db[last_row_idx, : 7] = np.append(np.append(image_id, dataset_id), np.append(class_id, bbox))
+                        class_id = roi["gt_classes"][i]
+                        dataset_to_classes[dataset_idx].add(class_id)
+                        feature_db[last_row_idx, : 7] = np.append(np.append(image_id, dataset_idx), np.append([class_id], bbox))
                         last_row_idx +=1
                     ground_truth_roidb.append(roi)
 
@@ -195,7 +197,7 @@ class JsonDataset(object):
             )
         _add_class_assignments(roidb)
         print("After class assignment", len(roidb))
-        return roidb, last_row_idx
+        return roidb, last_row_idx, dataset_to_classes
 
     def _prep_roidb_entry(self, entry):
         """Adds empty metadata fields to an roidb entry."""
@@ -214,8 +216,12 @@ class JsonDataset(object):
         entry['segms'] = []
         entry['gt_classes'] = np.empty((0), dtype=np.int32)
         entry['seg_areas'] = np.empty((0), dtype=np.float32)
+        #XXXXXXXXXX
+        # entry['gt_overlaps'] = scipy.sparse.csr_matrix(
+        #     np.empty((0, self.num_classes), dtype=np.float32)
+        # )
         entry['gt_overlaps'] = scipy.sparse.csr_matrix(
-            np.empty((0, self.num_classes), dtype=np.float32)
+            np.empty((0, cfg.MODEL.NUM_CLASSES), dtype=np.float32)
         )
         entry['is_crowd'] = np.empty((0), dtype=np.bool)
         # 'box_to_gt_ind_map': Shape is (#rois). Maps from each roi to the index
@@ -229,6 +235,8 @@ class JsonDataset(object):
         for k in ['date_captured', 'url', 'license', 'file_name']:
             if k in entry:
                 del entry[k]
+        entry['dataset_idx'] = np.empty((0), dtype=np.int32)
+
 
     def _add_gt_annotations(self, entry):
         """Add ground truth annotation metadata to an roidb entry."""
@@ -264,10 +272,15 @@ class JsonDataset(object):
 
         boxes = np.zeros((num_valid_objs, 4), dtype=entry['boxes'].dtype)
         gt_classes = np.zeros((num_valid_objs), dtype=entry['gt_classes'].dtype)
+        #XXXXXXXXXXX
+
+        # gt_overlaps = np.zeros(
+        #     (num_valid_objs, self.num_classes),
+        #     dtype=entry['gt_overlaps'].dtype
+        # )
         gt_overlaps = np.zeros(
-            (num_valid_objs, self.num_classes),
-            dtype=entry['gt_overlaps'].dtype
-        )
+                 (num_valid_objs, cfg.MODEL.NUM_CLASSES),
+                 dtype=entry['gt_overlaps'].dtype)
         seg_areas = np.zeros((num_valid_objs), dtype=entry['seg_areas'].dtype)
         is_crowd = np.zeros((num_valid_objs), dtype=entry['is_crowd'].dtype)
         box_to_gt_ind_map = np.zeros(
@@ -328,8 +341,7 @@ class JsonDataset(object):
 
         for entry, cached_entry in zip(roidb, cached_roidb):
             values = [cached_entry[key] for key in self.valid_cached_keys]
-            boxes, segms, gt_classes, seg_areas, gt_overlaps, is_crowd, \
-                box_to_gt_ind_map = values[:7]
+            boxes, segms, gt_classes, seg_areas, gt_overlaps, is_crowd, box_to_gt_ind_map, dataset_idx = values[:8]
             if self.keypoints is not None:
                 gt_keypoints, has_visible_keypoints = values[7:]
             entry['boxes'] = np.append(entry['boxes'], boxes, axis=0)
@@ -350,6 +362,7 @@ class JsonDataset(object):
                     entry['gt_keypoints'], gt_keypoints, axis=0
                 )
                 entry['has_visible_keypoints'] = has_visible_keypoints
+            entry["dataset_idx"] = np.append(entry["dataset_idx"], dataset_idx)
 
     def _add_proposals_from_file(
         self, roidb, proposal_file, min_proposal_size, top_k, crowd_thresh

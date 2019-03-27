@@ -190,8 +190,8 @@ def _coco_bbox_results_one_category(json_dataset, boxes, cat_id):
 
 def _do_detection_eval(json_dataset, res_file, output_dir):
     coco_dt = json_dataset.COCO.loadRes(str(res_file))
-    import ipdb; ipdb.set_trace()
     coco_eval = COCOeval(json_dataset.COCO, coco_dt, 'bbox')
+    coco_eval.params.catIds = list(json_dataset.contiguous_category_id_to_json_id.values())
     coco_eval.evaluate()
     coco_eval.accumulate()
     _log_detection_eval_metrics(json_dataset, coco_eval)

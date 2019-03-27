@@ -1,5 +1,7 @@
 """ Training Script """
 
+
+
 import argparse
 import distutils.util
 import os
@@ -9,6 +11,8 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
+
 
 import numpy as np
 import yaml
@@ -19,6 +23,10 @@ import cv2
 cv2.setNumThreads(0)  # pytorch issue 1355: possible deadlock in dataloader
 
 import _init_paths  # pylint: disable=unused-import
+sys.path.append("/home.nfs/babayeln/doc/utils")
+sys.path.append("/home.nfs/babayeln/doc/lib/datasets")
+
+
 import nn as mynn
 import utils.net as net_utils
 import utils.misc as misc_utils
@@ -30,7 +38,8 @@ from utils.detectron_weight_helper import load_detectron_weight
 from utils.logging import log_stats
 from utils.timer import Timer
 from utils.training_stats import TrainingStats
-from database.feature_entry import Database
+import utils.blob as blob_utils
+import faiss
 
 # OpenCL may be enabled by default in OpenCV3; disable it because it's not
 # thread safe and causes unwanted GPU memory allocations.
@@ -108,7 +117,7 @@ def parse_args():
     parser.add_argument(
         '--epochs', dest='num_epochs',
         help='Number of epochs to train',
-        default=-1, type=int)
+        default=6, type=int)
 
     # Resume training: requires same iterations per epoch
     parser.add_argument(
@@ -146,6 +155,10 @@ def main():
     """Main function"""
 
     args = parse_args()
+    #XXXXXXXXXXXXXXXXXXXXXXXXXXX
+    #args.cfg_filename = "configs/baselines/e2e_faster_rcnn_R-50-FPN_2x_COCO_part123.yaml"
+    #XXXXXXXXXXXXXXXXXXXXXXXXXXX
+
     print('Called with args:')
     print(args)
 
@@ -212,10 +225,9 @@ def main():
     dim: 1, 1, 1, 4, 1024 = 1031
     """
     ground_truth_roidb =[]
-    roidb, ratio_list, ratio_index, feature_db = combined_roidb_for_training(
+    roidb, ratio_list, ratio_index, feature_db, dataset_to_classes = combined_roidb_for_training(
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
         ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
-    import ipdb; ipdb.set_trace()
     #np.save(os.path.join(output_dir, "roidb_initial" + ".pkl"), roidb)
     #np.save(os.path.join(output_dir, "feature_db_val_initial" + ".pkl"), feature_db)
 
@@ -232,12 +244,14 @@ def main():
         cfg.MODEL.NUM_CLASSES,
         training=True)
 
+
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
         sampler=sampler,
         #num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
+
 
     dataset_groundtruth = RoiDataLoader(
         roidb= roidb,
@@ -291,7 +305,7 @@ def main():
         if args.resume:
             print(checkpoint['iters_per_epoch'], train_size // args.batch_size)
             #assert checkpoint['iters_per_epoch'] == train_size // args.batch_size, \
-            #    "iters_per_epoch should match for resume"
+            #v    "iters_per_epoch should match for resume"
             # There is a bug in optimizer.load_state_dict on Pytorch 0.3.1.
             # However it's fixed on master.
             # optimizer.load_state_dict(checkpoint['optimizer'])
@@ -353,6 +367,10 @@ def main():
     else:
         number_epochs = args.num_epochs
 
+    datasets_dictionary = create_dbs_for_classes(feature_db)
+    median_distance_class = [np.inf] * cfg.MODEL.NUM_CLASSES
+
+
     print("Total number of epochs: ", number_epochs)
 
     try:
@@ -379,6 +397,18 @@ def main():
                 preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
                 preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
                 foreground = net_outputs['faiss_db']["foreground"]
+                if args.bbbp:
+                    import ipdb; ipdb.set_trace()
+                    roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                    for roi in roidb_batch:
+                        dataset_idx = roi["dataset_idx"]
+                        if dataset_idx==1:
+                            pass
+
+                    #detect dataset
+                    #detect if the predicted clas is not from the dataset
+                    #detect probabability of being the object
+
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
                 optimizer.zero_grad()
@@ -386,66 +416,8 @@ def main():
                 optimizer.step()
                 training_stats.IterToc()
                 print("Finishing training part")
-                N_rows, N_columns = feature_db.shape
-                N_added = 0
                 images = []
 
-
-                import utils.blob as blob_utils
-                if args.bbbp:
-                    if args.step % 5000 == 0: # and args.step!=0
-                        k = 0
-                        for val_data in zip(dataloader_groundtruth):
-                            output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
-                            print("Iteration", k)
-                            #mport ipdb; ipdb.set_trace()
-                            val_data = val_data[0]
-                            for key in val_data:
-                                if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
-                                    val_data[key] = list(map(Variable, val_data[key]))
-                            roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
-                            if 327701 in [int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0]) for i in range(len(roidb))]:
-                                import ipdb;
-                                ipdb.set_trace()
-                            val_data["only_bbox"] = [True]
-                            val_data["image_to_idx"] = [image_to_idx]
-                            net_val_outputs = maskRCNN(**val_data)
-                            ground_truth_outputs = net_val_outputs['ground_truth']
-                            for i in ground_truth_outputs.keys():
-                                image_idx = ground_truth_outputs[i]["image"][0].item()
-                                if image_idx in images:
-                                    continue
-                                images.append(image_idx)
-                                bboxes_gt = ground_truth_outputs[i]["bbox"].numpy()
-                                N_instances = len(bboxes_gt)
-                                features_gt = ground_truth_outputs[i]["features"].data.cpu().numpy().astype("float32")
-                                for feature in features_gt:
-                                    if (feature == np.zeros(1024)).all():
-                                        import ipdb; ipdb.set_trace()
-                                classes = ground_truth_outputs[i]["classes"].numpy()
-                                classes = [[cl] for cl in classes]
-                                db_idx = image_to_idx[image_idx]
-                                #import ipdb; ipdb.set_trace()
-                                if not (feature_db[db_idx: db_idx + N_instances, 7:]==np.zeros((N_instances, 1024))).all():
-                                    import ipdb; ipdb.set_trace()
-                                if not int(feature_db[db_idx,0])==image_idx:
-                                    import ipdb; ipdb.set_trace()
-                                feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt,features_gt], axis=1)
-                                not_zeros = np.sum(np.all(np.equal(feature_db[:, 7:], np.zeros(shape=(N_rows, N_columns-7))), axis=1))
-                                N_added += N_instances
-                                if N_rows - (not_zeros + N_added)!=0:
-                                    print(N_rows, not_zeros, N_added)
-                                    import ipdb; ipdb.set_trace()
-                            k+=len(ground_truth_outputs)
-                            if k%500==0:
-                                print("Dumping it to pickle file ", output_path)
-                                np.save(output_path, feature_db)
-                        print("Dumping it to pickle file ", output_path)
-                        np.save(output_path, feature_db)
-                        with open(output_path+".pkl", "wb") as f:
-                            pickle.dump(feature_db, f)
-                        print("Done working with database")
-                        sys.exit(1)
 
 
                 if (args.step+1) % ckpt_interval_per_epoch == 0:
@@ -453,6 +425,7 @@ def main():
 
                 if args.step % args.disp_interval == 0:
                     log_training_stats(training_stats, global_step, lr)
+
 
                 global_step += 1
 
@@ -463,11 +436,21 @@ def main():
             net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
             # reset starting iter number after first epoch
             args.start_iter = 0
+            if args.bbbp:
+                dimension = 1024
+                feature_db = update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feature_db, output_dir)
+                features = feature_db[:, 7:]
+                features = features.astype('float32')
+                faiss_db = faiss.IndexFlatL2(dimension)
+                faiss_db.add(features)
+                median_distance_class = find_threhold_for_each_class(faiss_db, features, feature_db[:, 2], k_neighbours=5)
+
 
         # ---- Training ends ----
         if iters_per_epoch % args.disp_interval != 0:
             # log last stats at the end
             log_training_stats(training_stats, global_step, lr)
+
 
     except (RuntimeError, KeyboardInterrupt):
         logger.info('Save ckpt on exception ...')
@@ -479,6 +462,109 @@ def main():
     finally:
         if args.use_tfboard and not args.no_save:
             tblogger.close()
+
+def update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feature_db, output_dir ):
+    k = 0
+    for val_data in zip(dataloader_groundtruth):
+        output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
+        print("Iteration", k)
+        # mport ipdb; ipdb.set_trace()
+        val_data = val_data[0]
+        for key in val_data:
+            if key != 'roidb':  # roidb is a list of ndarrays with inconsistent length
+                val_data[key] = list(map(Variable, val_data[key]))
+        roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
+        val_data["only_bbox"] = [True]
+        val_data["image_to_idx"] = [image_to_idx]
+        net_val_outputs = maskRCNN(**val_data)
+        ground_truth_outputs = net_val_outputs['ground_truth']
+        for i in ground_truth_outputs.keys():
+            image_idx = ground_truth_outputs[i]["image"][0].item()
+            if image_idx in images:
+                continue
+            images.append(image_idx)
+            bboxes_gt = ground_truth_outputs[i]["bbox"].numpy()
+            N_instances = len(bboxes_gt)
+            features_gt = ground_truth_outputs[i]["features"].data.cpu().numpy().astype("float32")
+            classes = ground_truth_outputs[i]["classes"].numpy()
+            classes = [[cl] for cl in classes]
+            db_idx = image_to_idx[image_idx]
+            if not (feature_db[db_idx: db_idx + N_instances, 7:] == np.zeros((N_instances, 1024))).all():
+                import ipdb;
+                ipdb.set_trace()
+            if not int(feature_db[db_idx, 0]) == image_idx:
+                import ipdb;
+                ipdb.set_trace()
+            feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt, features_gt], axis=1)
+        k += len(ground_truth_outputs)
+        if k % 500 == 0:
+            print("Dumping it to pickle file ", output_path)
+            np.save(output_path, feature_db)
+    print("Dumping it to pickle file ", output_path)
+    np.save(output_path, feature_db)
+    with open(output_path + ".pkl", "wb") as f:
+        pickle.dump(feature_db, f)
+    print("Done working with database")
+    return feature_db
+
+
+def find_threhold_for_each_class(index, db, classes, k_neighbours=10):
+    print("Doing search")
+    distance, indecies = index.search(db, k_neighbours)
+    print("Finishing search")
+    classes_idx = classes[indecies]
+    distance_class = {}
+    counts = {}
+    for idx, neighbours in enumerate(classes_idx):
+        myself = int(classes[idx])
+        not_class_neighbours = np.where(neighbours != myself)[0]
+        if len(not_class_neighbours) == 0:
+            not_class_neighbours = [k_neighbours - 1]
+        first_not_class_neighbours = not_class_neighbours[0]
+        # if first_not_class_neighbours==0:
+        #    import ipdb; ipdb.set_trace()
+        if myself not in counts.keys():
+            counts[myself] = []
+            distance_class[myself] = []
+        counts[myself].append(first_not_class_neighbours)
+        distance_class[myself].append(distance[idx, first_not_class_neighbours])
+
+    median_distance_class = {}
+    for class_idx in distance_class.keys():
+        median_distance_class[class_idx] = np.median(distance_class[class_idx])
+    return median_distance_class
+
+
+def make_knn(index, db, classes, average_distance):
+    distance, indecies = index.search(db, 1)
+    neighbours = classes[indecies]
+    drop_loss = []
+    for neighbour, neighbour_distance in neighbours:
+        if neighbour_distance < average_distance[neighbour]:
+            drop_loss.append(True)
+        else:
+            drop_loss.append(False)
+    return drop_loss
+
+
+def create_dbs_for_classes(feature_db):
+    set_datasets = set(feature_db[:,1])
+    dimension = 1024
+    datasets_dictionary = {}
+    for dataset_id in set_datasets:
+        indecies = np.where(feature_db[:,1]!=dataset_id)[0]
+        features = feature_db[indecies, 7: ]
+        features = features.astype('float32')
+        faiss_db = faiss.IndexFlatL2(dimension)
+        faiss_db.add(features)
+        datasets_dictionary[dataset_id] = faiss_db
+    return datasets_dictionary
+
+
+
+
+
+
 
 
 def log_training_stats(training_stats, global_step, lr):

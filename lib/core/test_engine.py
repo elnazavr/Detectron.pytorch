@@ -36,6 +36,8 @@ from core.config import cfg
 from core.test import im_detect_all
 from datasets import task_evaluation
 from datasets.json_dataset import JsonDataset
+from datasets.roidb import define_all_classes, change_ids
+
 from modeling import model_builder
 import nn as mynn
 from utils.detectron_weight_helper import load_detectron_weight
@@ -91,6 +93,8 @@ def run_inference(
     is_parent = ind_range is None
 
     def result_getter():
+        datasets_name = list(cfg.TRAIN.DATASETS)
+        dict_combined = define_all_classes(datasets_name)
         if is_parent:
             # Parent case:
             # In this case we're either running inference on the entire dataset in a
@@ -105,7 +109,8 @@ def run_inference(
                     dataset_name,
                     proposal_file,
                     output_dir,
-                    multi_gpu=multi_gpu_testing
+                    multi_gpu=multi_gpu_testing,
+                    combined_cats_name_to_id = dict_combined
                 )
                 all_results.update(results)
 
@@ -121,10 +126,10 @@ def run_inference(
                 dataset_name,
                 proposal_file,
                 output_dir,
+                combined_cats_name_to_id=combined_cats_name_to_id,
                 ind_range=ind_range,
                 gpu_id=gpu_id
             )
-
     all_results = result_getter()
     if check_expected_results and is_parent:
         task_evaluation.check_expected_results(
@@ -144,9 +149,11 @@ def test_net_on_dataset(
         output_dir,
         multi_gpu=False,
         gpu_id=0,
-        only_existed_class=True):
+        only_existed_class=True,
+        combined_cats_name_to_id = {}):
     """Run inference on a dataset."""
     dataset = JsonDataset(dataset_name)
+    #change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -156,7 +163,7 @@ def test_net_on_dataset(
         )
     else:
         all_boxes, all_segms, all_keyps = test_net(
-            args, dataset_name, proposal_file, output_dir, gpu_id=gpu_id
+            args, dataset_name, proposal_file, output_dir, gpu_id=gpu_id, combined_cats_name_to_id = combined_cats_name_to_id
         )
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
@@ -222,15 +229,15 @@ def test_net(
         proposal_file,
         output_dir,
         ind_range=None,
-        gpu_id=0):
+        gpu_id=0,
+        combined_cats_name_to_id = {}):
     """Run inference on all images in a dataset or over an index range of images
     in a dataset using a single GPU.
     """
     assert not cfg.MODEL.RPN_ONLY, \
         'Use rpn_generate to generate proposals from RPN-only models'
-
     roidb, dataset, start_ind, end_ind, total_num_images = get_roidb_and_dataset(
-        dataset_name, proposal_file, ind_range
+        dataset_name, proposal_file, ind_range, combined_cats_name_to_id
     )
     roidb = roidb[0]
     print("Length of roidb", len(roidb))
@@ -344,11 +351,13 @@ def initialize_model_from_cfg(args, gpu_id=0):
     return model
 
 
-def get_roidb_and_dataset(dataset_name, proposal_file, ind_range):
+def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_name_to_id ={}):
     """Get the roidb for the dataset specified in the global cfg. Optionally
     restrict it to a range of indices if ind_range is a pair of integers.
     """
     dataset = JsonDataset(dataset_name)
+    #change_ids(dataset, combined_cats_name_to_id)
+
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
         roidb = dataset.get_roidb(

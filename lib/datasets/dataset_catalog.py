@@ -277,10 +277,22 @@ DATASETS = {
         ANN_FN:
             _DATA_DIR + '/coco/parts/annotations/2_train.json'
     },
-    'coco2017_debug': {
+    'coco2017_part2_debug': {
         IM_DIR:
-            _DATA_DIR + '/coco/val2017',
+            _DATA_DIR + '/coco/train2017',
         ANN_FN:
-            _DATA_DIR + '/coco/annotations/debug_instances_val2017.json'
+            _DATA_DIR + '/coco/parts/annotations/2_train_debug.json'
+    },
+    'coco2017_part1_debug': {
+        IM_DIR:
+            _DATA_DIR + '/coco/train2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/1_train_debug.json'
+    },
+    'coco2017_part0_debug': {
+        IM_DIR:
+            _DATA_DIR + '/coco/train2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/parts/annotations/0_train_debug.json'
     }
 }

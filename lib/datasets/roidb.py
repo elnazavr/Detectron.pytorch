@@ -21,6 +21,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import six
+import sys
 import logging
 import numpy as np
 
@@ -39,24 +40,29 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     object proposals. The roidb entries are then prepared for use in training,
     which involves caching certain types of metadata for each roidb entry.
     """
-    def get_roidb(dataset_name, proposal_file, last_row_idx):
+    def get_roidb(dataset_name, proposal_file, last_row_idx, dataset_idx=0, dataset_to_classes={}):
         ds = JsonDataset(dataset_name)
+        #change_ids(ds, combined_cats_name_to_id)
+
         print(last_row_idx)
-        roidb, last_row_idx = ds.get_roidb(
+        roidb, last_row_idx, dataset_to_classes = ds.get_roidb(
             gt=True,
             proposal_file=proposal_file,
             crowd_filter_thresh=cfg.TRAIN.CROWD_FILTER_THRESH,
             feature_db = feature_db,
             ground_truth_roidb = ground_truth_roidb,
             image_to_idx = image_to_idx,
-            last_row_idx = last_row_idx
+            last_row_idx = last_row_idx,
+            dataset_idx =  dataset_idx,
+            dataset_to_classes = dataset_to_classes
+
         )
         #if cfg.TRAIN.USE_FLIPPED:
         if False:
             logger.info('Appending horizontally-flipped training examples...')
             extend_with_flipped_entries(roidb, ds)
         logger.info('Loaded dataset: {:s}'.format(ds.name))
-        return roidb, last_row_idx
+        return roidb, last_row_idx, dataset_to_classes
 
     if isinstance(dataset_names, six.string_types):
         dataset_names = (dataset_names, )
@@ -67,8 +73,18 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     assert len(dataset_names) == len(proposal_files)
     roidbs = []
     last_row_idx = 0
+    dataset_idx = 0
+    dataset_to_classes ={}
+    dict_combined = define_all_classes(dataset_names)
+    if (len(dict_combined[dict_combined.keys()[0]]))+1!=cfg.MODEL.NUM_CLASSES:
+        print("Number of classes %d, number of predicted in model %d"%(len(dict_combined[dict_combined.keys()[0]])+1, cfg.MODEL.NUM_CLASSES))
+        sys.exit(1)
     for args in zip(dataset_names, proposal_files):
-        roidb, last_row_idx = get_roidb(*args, last_row_idx=last_row_idx)
+        roidb, last_row_idx, dataset_to_classes = get_roidb(*args,
+                                                            last_row_idx=last_row_idx,
+                                                            dataset_idx= dataset_idx,
+                                                            dataset_to_classes = dataset_to_classes)
+        dataset_idx+=1
         roidbs.append(roidb)
     if feature_db is not None:
         feature_db = feature_db[:last_row_idx, :]
@@ -89,7 +105,7 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
 
     _compute_and_log_stats(roidb)
 
-    return roidb, ratio_list, ratio_index, feature_db
+    return roidb, ratio_list, ratio_index, feature_db, dataset_to_classes
 
 
 def extend_with_flipped_entries(roidb, dataset, la):
@@ -260,3 +276,56 @@ def _compute_and_log_stats(roidb):
     logger.debug(
         '{:s}: {:d}'.format(
             'total'.rjust(char_len), np.sum(gt_hist)))
+
+
+def define_all_classes(datasets_name):
+    """
+    Defining all classes presented in the datasets
+    :param datasets_name:
+    :return:
+    """
+    continious_id_to_name, names_to_continioues_id_to, coco_id_to_continious_id_to, name_to_coco_id = {}, {}, {}, {}
+    for dataset_name in datasets_name:
+        ds = JsonDataset(dataset_name)
+        cats_dict = ds.COCO.cats
+        for key,value in cats_dict.items():
+            if value["name"] not in continious_id_to_name.values():
+                N = len(continious_id_to_name) +1
+                continious_id_to_name[N] = value["name"]
+                names_to_continioues_id_to[value["name"]] = N
+                coco_id_to_continious_id_to[value["id"]] = N
+                name_to_coco_id[value["name"]] = value["id"]
+    print("NAMES", name_to_coco_id)
+    return {"continious_id_to_name": continious_id_to_name,
+            "names_to_continioues_id_to": names_to_continioues_id_to,
+            "coco_id_to_continious_id_to": coco_id_to_continious_id_to,
+            "name_to_coco_id": name_to_coco_id}
+
+
+def change_ids(ds, dict_combined):
+    continious_id_to_name  = dict_combined["continious_id_to_name"]
+    names_to_continioues_id_to = dict_combined["names_to_continioues_id_to"]
+    coco_id_to_continious_id_to = dict_combined["coco_id_to_continious_id_to"]
+    name_to_coco_id = dict_combined["name_to_coco_id"]
+    print(len(name_to_coco_id), name_to_coco_id)
+
+    ds.json_category_id_to_contiguous_id, ds.contiguous_category_id_to_json_id = {}, {}
+    ds.classes = [0] * (len(continious_id_to_name)+1)
+    ds.classes[0] = '__background__'
+    for name, continious_ds_id in names_to_continioues_id_to.items():
+        coco_cat_id = name_to_coco_id[name]
+        ds.classes[continious_ds_id] = name
+        ds.category_to_id_map[name] = continious_ds_id
+        ds.json_category_id_to_contiguous_id[coco_cat_id] = continious_ds_id
+        ds.contiguous_category_id_to_json_id[continious_ds_id] = coco_cat_id
+    """
+    for continious_ds_id, coco_cat_id in contiguous_category_id_to_json_id.items():
+        name = ds.COCO.cats[coco_cat_id]["name"]
+        continious_ds_id = combined_cats_name_to_id[name]
+        ds.json_category_id_to_contiguous_id[coco_cat_id] = continious_ds_id
+        ds.contiguous_category_id_to_json_id[continious_ds_id] = coco_cat_id
+        ds.classes[continious_ds_id] = name
+    """
+
+    print(ds.classes, ds.json_category_id_to_contiguous_id,  ds.contiguous_category_id_to_json_id)
+    print(len(ds.classes), len(ds.json_category_id_to_contiguous_id), len(ds.contiguous_category_id_to_json_id))
