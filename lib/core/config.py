@@ -401,7 +401,7 @@ __C.MODEL.CONV_BODY = ''
 
 # Number of classes in the dataset; must be set
 # E.g., 81 for COCO (80 foreground + 1 background)
-__C.MODEL.NUM_CLASSES = -1
+__C.MODEL.NUM_CLASSES = [81]
 
 # Use a class agnostic bounding box regressor instead of the default per-class
 # regressor
