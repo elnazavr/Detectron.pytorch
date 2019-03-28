@@ -162,17 +162,16 @@ def _sample_rois(roidb, im_scale, batch_idx):
     sampled_labels = roidb['max_classes'][keep_inds]
     sampled_labels[fg_rois_per_this_image:] = 0  # Label bg RoIs with class 0
     sampled_boxes = roidb['boxes'][keep_inds]
-
     if 'bbox_targets' not in roidb:
         gt_inds = np.where(roidb['gt_classes'] > 0)[0]
         gt_boxes = roidb['boxes'][gt_inds, :]
         gt_assignments = gt_inds[roidb['box_to_gt_ind_map'][keep_inds]]
         bbox_targets = _compute_targets(
             sampled_boxes, gt_boxes[gt_assignments, :], sampled_labels)
-        bbox_targets, bbox_inside_weights = _expand_bbox_targets(bbox_targets)
+        bbox_targets, bbox_inside_weights = _expand_bbox_targets(bbox_targets, roidb["dataset_idx"][0])
     else:
         bbox_targets, bbox_inside_weights = _expand_bbox_targets(
-            roidb['bbox_targets'][keep_inds, :])
+            roidb['bbox_targets'][keep_inds, :], roidb["dataset_idx"][0])
 
     bbox_outside_weights = np.array(
         bbox_inside_weights > 0, dtype=bbox_inside_weights.dtype)
@@ -219,7 +218,7 @@ def _compute_targets(ex_rois, gt_rois, labels):
         np.float32, copy=False)
 
 
-def _expand_bbox_targets(bbox_target_data):
+def _expand_bbox_targets(bbox_target_data, dataset_idx):
     """Bounding-box regression targets are stored in a compact form in the
     roidb.
 
@@ -231,7 +230,7 @@ def _expand_bbox_targets(bbox_target_data):
         bbox_target_data (ndarray): N x 4K blob of regression targets
         bbox_inside_weights (ndarray): N x 4K blob of loss weights
     """
-    num_bbox_reg_classes = cfg.MODEL.NUM_CLASSES
+    num_bbox_reg_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
     if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
         num_bbox_reg_classes = 2  # bg and fg
 
