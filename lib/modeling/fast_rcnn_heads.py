@@ -12,19 +12,25 @@ import utils.net as net_utils
 class fast_rcnn_outputs(nn.Module):
     def __init__(self, dim_in):
         super().__init__()
-        self.cls_score = nn.Linear(dim_in, cfg.MODEL.NUM_CLASSES)
-        if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:  # bg and fg
-            self.bbox_pred = nn.Linear(dim_in, 4 * 2)
-        else:
-            self.bbox_pred = nn.Linear(dim_in, 4 * cfg.MODEL.NUM_CLASSES)
 
-        self._init_weights()
+        if type(cfg.MODEL.NUM_CLASSES) is not list:
+            cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
+        self.cls_score, self.bbox_pred = {}, {}
+        for idx, num_classes in enumerate(cfg.MODEL.NUM_CLASSES):
+            self.cls_score[idx] = nn.Linear(dim_in, num_classes)
+            if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:  # bg and fg
+                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * 2)
+            else:
+                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * num_classes)
+            self.bbox_pred[idx].to("cuda")
+            self.cls_score[idx].to("cuda")
+            self._init_weights(idx)
 
-    def _init_weights(self):
-        init.normal_(self.cls_score.weight, std=0.01)
-        init.constant_(self.cls_score.bias, 0)
-        init.normal_(self.bbox_pred.weight, std=0.001)
-        init.constant_(self.bbox_pred.bias, 0)
+    def _init_weights(self, idx):
+        init.normal_(self.cls_score[idx].weight, std=0.01)
+        init.constant_(self.cls_score[idx].bias, 0)
+        init.normal_(self.bbox_pred[idx].weight, std=0.001)
+        init.constant_(self.bbox_pred[idx].bias, 0)
 
     def detectron_weight_mapping(self):
         detectron_weight_mapping = {
@@ -36,13 +42,13 @@ class fast_rcnn_outputs(nn.Module):
         orphan_in_detectron = []
         return detectron_weight_mapping, orphan_in_detectron
 
-    def forward(self, x):
+    def forward(self, x, idx):
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
-        cls_score = self.cls_score(x)
+        cls_score = self.cls_score[idx](x)
         if not self.training:
             cls_score = F.softmax(cls_score, dim=1)
-        bbox_pred = self.bbox_pred(x)
+        bbox_pred = self.bbox_pred[idx](x)
 
         return cls_score, bbox_pred
 
