@@ -41,7 +41,7 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     which involves caching certain types of metadata for each roidb entry.
     """
     def get_roidb(dataset_name, proposal_file, last_row_idx, dataset_idx=0, dataset_to_classes={}):
-        ds = JsonDataset(dataset_name)
+        ds = JsonDataset(dataset_name, dataset_idx)
         #change_ids(ds, combined_cats_name_to_id)
 
         print(last_row_idx)
@@ -53,7 +53,6 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
             ground_truth_roidb = ground_truth_roidb,
             image_to_idx = image_to_idx,
             last_row_idx = last_row_idx,
-            dataset_idx =  dataset_idx,
             dataset_to_classes = dataset_to_classes
 
         )
@@ -76,9 +75,9 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     dataset_idx = 0
     dataset_to_classes ={}
     dict_combined = define_all_classes(dataset_names)
-    if (len(dict_combined[dict_combined.keys()[0]]))+1!=cfg.MODEL.NUM_CLASSES:
-        print("Number of classes %d, number of predicted in model %d"%(len(dict_combined[dict_combined.keys()[0]])+1, cfg.MODEL.NUM_CLASSES))
-        sys.exit(1)
+    #if (len(dict_combined[dict_combined.keys()[0]]))+1!=cfg.MODEL.NUM_CLASSES:
+    #    print("Number of classes %d, number of predicted in model %d"%(len(dict_combined[dict_combined.keys()[0]])+1, cfg.MODEL.NUM_CLASSES))
+    #    sys.exit(1)
     for args in zip(dataset_names, proposal_files):
         roidb, last_row_idx, dataset_to_classes = get_roidb(*args,
                                                             last_row_idx=last_row_idx,
@@ -290,7 +289,7 @@ def define_all_classes(datasets_name):
         cats_dict = ds.COCO.cats
         for key,value in cats_dict.items():
             if value["name"] not in continious_id_to_name.values():
-                N = len(continious_id_to_name) +1
+                N = len(continious_id_to_name) + 1
                 continious_id_to_name[N] = value["name"]
                 names_to_continioues_id_to[value["name"]] = N
                 coco_id_to_continious_id_to[value["id"]] = N

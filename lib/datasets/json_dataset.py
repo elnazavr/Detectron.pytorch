@@ -85,7 +85,7 @@ class JsonDataset(object):
         }
         self._init_keypoints()
         self.dataset_idx = dataset_idx
-        #self.model_num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
+        self.model_num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
         #self.model_num_classes = 81
 
         # # Set cfg.MODEL.NUM_CLASSES
