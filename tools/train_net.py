@@ -236,7 +236,6 @@ def main():
     logger.info('{:d} roidb entries'.format(train_size))
     logger.info('Takes %.2f sec(s) to construct roidb', timers['roidb'].average_time)
 
-
     sampler = MinibatchSampler(ratio_list, ratio_index)
 
     dataset = RoiDataLoader(
@@ -367,8 +366,8 @@ def main():
     else:
         number_epochs = args.num_epochs
 
-    datasets_dictionary = create_dbs_for_classes(feature_db)
-    median_distance_class = [np.inf] * cfg.MODEL.NUM_CLASSES
+    #datasets_dictionary = create_dbs_for_classes(feature_db)
+    #median_distance_class = [np.inf] * cfg.MODEL.NUM_CLASSES
 
 
     print("Total number of epochs: ", number_epochs)
