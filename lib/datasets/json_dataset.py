@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 class JsonDataset(object):
     """A class representing a COCO json dataset."""
 
-    def __init__(self, name):
+    def __init__(self, name, dataset_idx):
         assert name in DATASETS.keys(), \
             'Unknown dataset name: {}'.format(name)
         assert os.path.exists(DATASETS[name][IM_DIR]), \
@@ -84,6 +84,7 @@ class JsonDataset(object):
             for k, v in self.json_category_id_to_contiguous_id.items()
         }
         self._init_keypoints()
+        self.dataset_idx = dataset_idx
 
         # # Set cfg.MODEL.NUM_CLASSES
         # if cfg.MODEL.NUM_CLASSES != -1:
@@ -123,7 +124,6 @@ class JsonDataset(object):
             ground_truth_roidb=None,
             image_to_idx=None,
             last_row_idx=None,
-            dataset_idx= 0,
             dataset_to_classes = {}
 
     ):
@@ -137,7 +137,7 @@ class JsonDataset(object):
             'Crowd filter threshold must be 0 if ground-truth annotations ' \
             'are not included.'
         image_ids = self.COCO.getImgIds()
-        dataset_to_classes[dataset_idx] = set()
+        dataset_to_classes[self.dataset_idx] = set()
         image_ids.sort()
         if cfg.DEBUG:
             roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))[:100]
@@ -159,7 +159,7 @@ class JsonDataset(object):
                 self.debug_timer.tic()
                 for entry in roidb:
                     self._add_gt_annotations(entry)
-                    entry["dataset_idx"] = dataset_idx
+                    entry["dataset_idx"] = self.dataset_idx
                 logger.debug(
                     '_add_gt_annotations took {:.3f}s'.
                     format(self.debug_timer.toc(average=False))
@@ -178,8 +178,8 @@ class JsonDataset(object):
                     for i in range(len(roi["gt_classes"])):
                         bbox = roi["boxes"][i]
                         class_id = roi["gt_classes"][i]
-                        dataset_to_classes[dataset_idx].add(class_id)
-                        feature_db[last_row_idx, : 7] = np.append(np.append(image_id, dataset_idx), np.append([class_id], bbox))
+                        dataset_to_classes[self.dataset_idx].add(class_id)
+                        feature_db[last_row_idx, : 7] = np.append(np.append(image_id, self.dataset_idx), np.append([class_id], bbox))
                         last_row_idx +=1
                     ground_truth_roidb.append(roi)
 
