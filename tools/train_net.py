@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
 
 import numpy as np
@@ -228,7 +228,15 @@ def main():
     roidb, ratio_list, ratio_index, feature_db, dataset_to_classes = combined_roidb_for_training(
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
         ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
-    #np.save(os.path.join(output_dir, "roidb_initial" + ".pkl"), roidb)
+
+    # roidb_new = []
+    # import copy
+    # for roi in roidb:
+    #     roi_new = copy.deepcopy(roi)
+    #     roi_new["dataset"] = -1
+    #     roidb_new.append(roi_new)
+
+    #np.save(os.path.join(output_dir, "roidb_initial" + ".pkl"), roidb_new)
     #np.save(os.path.join(output_dir, "feature_db_val_initial" + ".pkl"), feature_db)
 
     timers['roidb'].toc()
@@ -377,6 +385,7 @@ def main():
         logger.info('Training starts !')
         args.step = args.start_iter
         global_step = iters_per_epoch * args.start_epoch + args.step
+        x, y = 0, 0
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
             # ---- Start of epoch ----
 
@@ -386,20 +395,24 @@ def main():
                 net_utils.decay_learning_rate(optimizer, lr, cfg.SOLVER.GAMMA)
                 lr *= cfg.SOLVER.GAMMA
             for args.step, input_data in zip(range(args.start_iter, iters_per_epoch), dataloader):
+                x = x + 512
                 for key in input_data:
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
                 net_outputs = maskRCNN(**input_data)
-                preidcted_classes = net_outputs["faiss_db"]["class"]
+
+                preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
                 preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
+                roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                print("Image" , [(os.path.basename(roi["image"]),  roi["dataset_idx"]) for roi in roidb_batch])
+                print(len(preidcted_classes), [cl for cl in preidcted_classes if cl!=0], [roi["gt_classes"] for roi in roidb_batch])
+                y += sum([gt_class for roi in roidb_batch for gt_class in roi["gt_classes"]if gt_class!=0])
                 preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
                 preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
                 foreground = net_outputs['faiss_db']["foreground"]
                 if args.bbbp:
-                    import ipdb; ipdb.set_trace()
-                    roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
                     for roi in roidb_batch:
                         dataset_idx = roi["dataset_idx"]
                         if dataset_idx==1:
@@ -418,12 +431,12 @@ def main():
                 print("Finishing training part")
                 images = []
 
-
+                print("Acc", (x - y) / x)
 
                 if (args.step+1) % ckpt_interval_per_epoch == 0:
                     net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
 
-                if args.step % args.disp_interval == 0:
+                if args.step % args.disp_interval == 0 and args.step!=0 :
                     log_training_stats(training_stats, global_step, lr)
 
 
