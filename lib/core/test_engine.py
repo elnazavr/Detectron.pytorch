@@ -126,7 +126,7 @@ def run_inference(
                 dataset_name,
                 proposal_file,
                 output_dir,
-                combined_cats_name_to_id=combined_cats_name_to_id,
+                combined_cats_name_to_id=dict_combined,
                 ind_range=ind_range,
                 gpu_id=gpu_id
             )

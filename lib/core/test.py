@@ -70,6 +70,10 @@ def im_detect_all(model, im, box_proposals=None, timers=None):
         scores, boxes, im_scale, blob_conv = im_detect_bbox(
             model, im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE, box_proposals)
     timers['im_detect_bbox'].toc()
+    for score in scores:
+        heads_classes_index = np.argmax(score, axis=0)
+        heads_values = [cls_score_np_head[heads_classes_index[idx]] for idx, cls_score_np_head in enumerate(score)]
+        np.max(score, axis=0)
 
     # score and boxes are from the whole image after score thresholding and nms
     # (they are not separated by class) (numpy.ndarray)
