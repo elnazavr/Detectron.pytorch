@@ -153,7 +153,7 @@ def test_net_on_dataset(
         combined_cats_name_to_id = {}):
     """Run inference on a dataset."""
     dataset = JsonDataset(dataset_name, -1)
-    #change_ids(dataset, combined_cats_name_to_id)
+    change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -355,8 +355,8 @@ def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_
     """Get the roidb for the dataset specified in the global cfg. Optionally
     restrict it to a range of indices if ind_range is a pair of integers.
     """
-    dataset = JsonDataset(dataset_name)
-    #change_ids(dataset, combined_cats_name_to_id)
+    dataset = JsonDataset(dataset_name, -1)
+    change_ids(dataset, combined_cats_name_to_id)
 
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'

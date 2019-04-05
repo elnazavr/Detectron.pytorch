@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 class JsonDataset(object):
     """A class representing a COCO json dataset."""
 
-    def __init__(self, name, dataset_idx):
+    def __init__(self, name, dataset_idx=-1):
         assert name in DATASETS.keys(), \
             'Unknown dataset name: {}'.format(name)
         assert os.path.exists(DATASETS[name][IM_DIR]), \
