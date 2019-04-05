@@ -12,7 +12,7 @@ import utils.net as net_utils
 class fast_rcnn_outputs(nn.Module):
     def __init__(self, dim_in):
         super().__init__()
-
+        print(type(cfg.MODEL.NUM_CLASSES))
         if type(cfg.MODEL.NUM_CLASSES) is not list:
             cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
         self.cls_score, self.bbox_pred = {}, {}
@@ -53,11 +53,11 @@ class fast_rcnn_outputs(nn.Module):
         else:
             cls_score, bbox_pred = [], []
             for i in range(len(self.cls_score)):
-                cls_score_head = self.cls_score[idx](x)
+                cls_score_head = self.cls_score[i](x)
                 if not self.training:
                     cls_score_head = F.softmax(cls_score_head, dim=1)
                 cls_score.append(cls_score_head)
-                bbox_pred_head = self.bbox_pred[idx](x)
+                bbox_pred_head = self.bbox_pred[i](x)
                 bbox_pred.append(bbox_pred_head)
         return cls_score, bbox_pred
 
