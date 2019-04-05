@@ -152,7 +152,7 @@ def test_net_on_dataset(
         only_existed_class=True,
         combined_cats_name_to_id = {}):
     """Run inference on a dataset."""
-    dataset = JsonDataset(dataset_name)
+    dataset = JsonDataset(dataset_name, -1)
     #change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
