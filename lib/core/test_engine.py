@@ -152,8 +152,8 @@ def test_net_on_dataset(
         only_existed_class=True,
         combined_cats_name_to_id = {}):
     """Run inference on a dataset."""
-    dataset = JsonDataset(dataset_name)
-    #change_ids(dataset, combined_cats_name_to_id)
+    dataset = JsonDataset(dataset_name, -1)
+    change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -243,7 +243,7 @@ def test_net(
     print("Length of roidb", len(roidb))
     model = initialize_model_from_cfg(args, gpu_id=gpu_id)
     num_images = len(roidb)
-    num_classes = cfg.MODEL.NUM_CLASSES
+    num_classes = sum(cfg.MODEL.NUM_CLASSES) - len(cfg.MODEL.NUM_CLASSES) + 1
     all_boxes, all_segms, all_keyps = empty_results(num_classes, num_images)
     timers = defaultdict(Timer)
     for i, entry in enumerate(roidb):
@@ -355,8 +355,8 @@ def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_
     """Get the roidb for the dataset specified in the global cfg. Optionally
     restrict it to a range of indices if ind_range is a pair of integers.
     """
-    dataset = JsonDataset(dataset_name)
-    #change_ids(dataset, combined_cats_name_to_id)
+    dataset = JsonDataset(dataset_name, -1)
+    change_ids(dataset, combined_cats_name_to_id)
 
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
