@@ -149,9 +149,7 @@ class Generalized_RCNN(nn.Module):
 
     def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
         im_data = data
-        if not self.training:
-            roidb = blob_utils.deserialize(np.array(roidb.tolist()))
-        else:
+        if self.training:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
 
         device_id = im_data.get_device()
@@ -203,11 +201,11 @@ class Generalized_RCNN(nn.Module):
             if self.training:
                 idx = roidb[0]["dataset_idx"][0]
             else:
-                idx = roidb["dataset_idx"]
+                idx = -1
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
-
-            cls_score_np = cls_score.detach().cpu().numpy()
             if self.training:
+
+                cls_score_np = cls_score.detach().cpu().numpy()
                 return_dict['faiss_db']['bbox_feat'] = box_feat
                 return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
                 return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
