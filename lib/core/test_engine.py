@@ -47,6 +47,7 @@ import utils.subprocess as subprocess_utils
 import utils.vis as vis_utils
 from utils.io import save_object
 from utils.timer import Timer
+from utils.blob import serialize
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,9 @@ def get_eval_functions():
 
 
 def get_inference_dataset(index, is_parent=True):
-    assert is_parent or len(cfg.TEST.DATASETS) == 1, \
-        'The child inference process can only work on a single dataset'
+    print(cfg.TEST.DATASETS, is_parent, len(cfg.TEST.DATASETS), is_parent or len(cfg.TEST.DATASETS) == 1)
+    #assert is_parent or len(cfg.TEST.DATASETS) == 1, \
+    #    'The child inference process can only work on a single dataset'
 
     dataset_name = cfg.TEST.DATASETS[index]
 
@@ -110,7 +112,8 @@ def run_inference(
                     proposal_file,
                     output_dir,
                     multi_gpu=multi_gpu_testing,
-                    combined_cats_name_to_id = dict_combined
+                    combined_cats_name_to_id = dict_combined,
+                    idx = i
                 )
                 all_results.update(results)
 
@@ -150,10 +153,11 @@ def test_net_on_dataset(
         multi_gpu=False,
         gpu_id=0,
         only_existed_class=True,
-        combined_cats_name_to_id = {}):
+        combined_cats_name_to_id = {},
+        idx = -1):
     """Run inference on a dataset."""
-    dataset = JsonDataset(dataset_name, -1)
-    change_ids(dataset, combined_cats_name_to_id)
+    dataset = JsonDataset(dataset_name, idx)
+    #change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -163,8 +167,8 @@ def test_net_on_dataset(
         )
     else:
         all_boxes, all_segms, all_keyps = test_net(
-            args, dataset_name, proposal_file, output_dir, gpu_id=gpu_id, combined_cats_name_to_id = combined_cats_name_to_id
-        )
+            args, dataset_name, proposal_file, output_dir, gpu_id=gpu_id,
+            combined_cats_name_to_id = combined_cats_name_to_id, idx=idx)
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
     if only_existed_class:
@@ -230,14 +234,15 @@ def test_net(
         output_dir,
         ind_range=None,
         gpu_id=0,
-        combined_cats_name_to_id = {}):
+        combined_cats_name_to_id = {},
+        idx = -1):
     """Run inference on all images in a dataset or over an index range of images
     in a dataset using a single GPU.
     """
     assert not cfg.MODEL.RPN_ONLY, \
         'Use rpn_generate to generate proposals from RPN-only models'
     roidb, dataset, start_ind, end_ind, total_num_images = get_roidb_and_dataset(
-        dataset_name, proposal_file, ind_range, combined_cats_name_to_id
+        dataset_name, proposal_file, ind_range, combined_cats_name_to_id, idx=idx
     )
     roidb = roidb[0]
     print("Length of roidb", len(roidb))
@@ -261,7 +266,7 @@ def test_net(
             # in-network RPN; 1-stage models don't require proposals.
             box_proposals = None
         im = cv2.imread(entry['image'])
-        cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers)
+        cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers, roidb=entry)
 
         extend_results(i, all_boxes, cls_boxes_i)
         if cls_segms_i is not None:
@@ -351,12 +356,12 @@ def initialize_model_from_cfg(args, gpu_id=0):
     return model
 
 
-def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_name_to_id ={}):
+def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_name_to_id ={}, idx=-1):
     """Get the roidb for the dataset specified in the global cfg. Optionally
     restrict it to a range of indices if ind_range is a pair of integers.
     """
-    dataset = JsonDataset(dataset_name, -1)
-    change_ids(dataset, combined_cats_name_to_id)
+    dataset = JsonDataset(dataset_name,idx)
+    #change_ids(dataset, combined_cats_name_to_id)
 
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
