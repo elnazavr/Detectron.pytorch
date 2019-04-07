@@ -151,6 +151,8 @@ class Generalized_RCNN(nn.Module):
         im_data = data
         if self.training:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
+        else:
+            roidb = blob_utils.deserialize(roidb)
 
         device_id = im_data.get_device()
 
@@ -201,7 +203,7 @@ class Generalized_RCNN(nn.Module):
             if self.training:
                 idx = roidb[0]["dataset_idx"][0]
             else:
-                idx = -1
+                idx = roidb["dataset_idx"]
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
             if self.training:
 
@@ -409,28 +411,38 @@ class Generalized_RCNN(nn.Module):
         return_dict['losses'][key] = value
 
 
-
-def find_threhold_for_each_class(db, classes,  k_neighbours=10):
-    index = create_db(db)
+def find_threhold_for_each_class(index, db, classes, k_neighbours=10):
+    print("Doing search")
     distance, indecies = index.search(db, k_neighbours)
+    print("Finishing search")
     classes_idx = classes[indecies]
-    average_distance_sample = []
+    distance_class = {}
+    counts = {}
     for idx, neighbours in enumerate(classes_idx):
-        myself = neighbours[0]
-        not_class_neighbours = np.where(neighbours!=myself)[0]
+        myself = int(classes[idx])
+        not_class_neighbours = np.where(neighbours != myself)[0]
+        if len(not_class_neighbours) == 0:
+            not_class_neighbours = [k_neighbours - 1]
         first_not_class_neighbours = not_class_neighbours[0]
-        average_distance_sample.append(distance[idx, first_not_class_neighbours])
-    average_distance_sample = np.array(average_distance_sample)
+        if myself not in counts.keys():
+            counts[myself] = []
+            distance_class[myself] = []
+        counts[myself].append(first_not_class_neighbours)
+        distance_class[myself].append(distance[idx, first_not_class_neighbours])
+
     average_distance_class = {}
-    for class_idx in set(classes):
-        average_distance_class[class_idx] = np.median(average_distance_sample[np.where(classes==class_idx)])
-    return average_distance_class
+    for class_idx in distance_class.keys():
+        average_distance_class[class_idx] = np.median(distance_class[class_idx])
+    return average_distance_class, counts, classes_idx, distance, indecies
 
 
 def create_db(db):
     dimension = 1024
     db = db.astype('float32')
-    faiss_db = faiss.IndexFlatL2(dimension)
+    cfg = faiss.GpuIndexFlatConfig()
+    cfg.useFloat16 = False
+    cfg.device = 0
+    faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
     faiss_db.add(db)
     return faiss_db
 
