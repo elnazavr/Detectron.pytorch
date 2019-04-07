@@ -197,7 +197,7 @@ class JsonDataset(object):
                 '_add_proposals_from_file took {:.3f}s'.
                 format(self.debug_timer.toc(average=False))
             )
-        _add_class_assignments(roidb)
+        _add_class_assignments(roidb, self.dataset_idx)
         print("After class assignment", len(roidb))
         return roidb, last_row_idx, dataset_to_classes
 
@@ -551,7 +551,7 @@ def _filter_crowd_proposals(roidb, crowd_thresh):
         entry['gt_overlaps'] = scipy.sparse.csr_matrix(gt_overlaps)
 
 
-def _add_class_assignments(roidb):
+def _add_class_assignments(roidb, dataset_idx=-1):
     """Compute object category assignment for each box associated with each
     roidb entry.
     """
@@ -563,6 +563,8 @@ def _add_class_assignments(roidb):
         max_classes = gt_overlaps.argmax(axis=1)
         entry['max_classes'] = max_classes
         entry['max_overlaps'] = max_overlaps
+        if len(entry["dataset_idx"])==0:
+            entry["dataset_idx"] = dataset_idx
         # sanity checks
         # if max overlap is 0, the class must be background (class 0)
         zero_inds = np.where(max_overlaps == 0)[0]
