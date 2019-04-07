@@ -393,6 +393,12 @@ def main():
                 net_outputs = maskRCNN(**input_data)
                 preidcted_classes = net_outputs["faiss_db"]["class"]
                 preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
+                roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
+                print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],
+                      [roi["gt_classes"] for roi in roidb_batch])
+
+                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
                 preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
                 preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
                 foreground = net_outputs['faiss_db']["foreground"]
