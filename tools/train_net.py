@@ -229,6 +229,8 @@ def main():
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
         ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
 
+    C = set(dataset_to_classes.values())
+
     # roidb_new = []
     # import copy
     # for roi in roidb:
@@ -385,9 +387,11 @@ def main():
         logger.info('Training starts !')
         args.step = args.start_iter
         global_step = iters_per_epoch * args.start_epoch + args.step
-        x, y = 0, 0
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
             # ---- Start of epoch ----
+            feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
+            classes_faiss = create_dbs_for_classes(feature_db)
+            median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
 
             # adjust learning rate
             if args.lr_decay_epochs and args.epoch == args.lr_decay_epochs[0] and args.start_iter == 0:
@@ -395,7 +399,6 @@ def main():
                 net_utils.decay_learning_rate(optimizer, lr, cfg.SOLVER.GAMMA)
                 lr *= cfg.SOLVER.GAMMA
             for args.step, input_data in zip(range(args.start_iter, iters_per_epoch), dataloader):
-                x = x + 512
                 for key in input_data:
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
@@ -404,19 +407,25 @@ def main():
                 net_outputs = maskRCNN(**input_data)
 
                 preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
+                preidcted_classes_score = net_outputs["faiss_db"]["class_score"].detach().cpu().numpy()
                 roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
                 print("Image" , [(os.path.basename(roi["image"]),  roi["dataset_idx"]) for roi in roidb_batch])
                 print(len(preidcted_classes), [cl for cl in preidcted_classes if cl!=0], [roi["gt_classes"] for roi in roidb_batch])
-                y += sum([gt_class for roi in roidb_batch for gt_class in roi["gt_classes"]if gt_class!=0])
-                preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
                 preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                foreground = net_outputs['faiss_db']["foreground"]
                 if args.bbbp:
-                    for roi in roidb_batch:
-                        dataset_idx = roi["dataset_idx"]
-                        if dataset_idx==1:
-                            pass
+                    for idx, roi in enumerate(roidb_batch):
+                        dataset_idx = roi["dataset_idx"][0]
+                        c_plus = dataset_to_classes[dataset_idx]
+                        c_minus = set(C) - set(c_plus)
+                        drop_loss = np.ones(shape=predicted_class.shape)
+                        for idx, predicted_class in enumerate(preidcted_classes):
+                            if predicted_class!=0:
+                                if predicted_class in c_minus and preidcted_classes_score[idx]>0.5:
+                                    feature = preidcted_features[idx]
+                                    idx, distance = classes_faiss[predicted_class].search(feature, 1)
+                                    if distance < median_distance_class[predicted_class]:
+                                        drop_loss[idx] = 0
+
 
                     #detect dataset
                     #detect if the predicted clas is not from the dataset
@@ -430,8 +439,6 @@ def main():
                 training_stats.IterToc()
                 print("Finishing training part")
                 images = []
-
-                print("Acc", (x - y) / x)
 
                 if (args.step+1) % ckpt_interval_per_epoch == 0:
                     net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
@@ -459,6 +466,7 @@ def main():
                 median_distance_class = find_threhold_for_each_class(faiss_db, features, feature_db[:, 2], k_neighbours=5)
 
 
+
         # ---- Training ends ----
         if iters_per_epoch % args.disp_interval != 0:
             # log last stats at the end
@@ -476,8 +484,9 @@ def main():
         if args.use_tfboard and not args.no_save:
             tblogger.close()
 
-def update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feature_db, output_dir ):
+def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir ):
     k = 0
+    images = []
     for val_data in zip(dataloader_groundtruth):
         output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
         print("Iteration", k)
@@ -486,7 +495,7 @@ def update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feat
         for key in val_data:
             if key != 'roidb':  # roidb is a list of ndarrays with inconsistent length
                 val_data[key] = list(map(Variable, val_data[key]))
-        roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
+
         val_data["only_bbox"] = [True]
         val_data["image_to_idx"] = [image_to_idx]
         net_val_outputs = maskRCNN(**val_data)
@@ -502,12 +511,7 @@ def update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feat
             classes = ground_truth_outputs[i]["classes"].numpy()
             classes = [[cl] for cl in classes]
             db_idx = image_to_idx[image_idx]
-            if not (feature_db[db_idx: db_idx + N_instances, 7:] == np.zeros((N_instances, 1024))).all():
-                import ipdb;
-                ipdb.set_trace()
-            if not int(feature_db[db_idx, 0]) == image_idx:
-                import ipdb;
-                ipdb.set_trace()
+
             feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt, features_gt], axis=1)
         k += len(ground_truth_outputs)
         if k % 500 == 0:
@@ -521,9 +525,13 @@ def update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feat
     return feature_db
 
 
-def find_threhold_for_each_class(index, db, classes, k_neighbours=10):
+def find_threhold_for_each_class(db, classes, k_neighbours=10):
+    print("Creating database")
+    faiss_db = create_faiss()
+    faiss_db.add(db)
+
     print("Doing search")
-    distance, indecies = index.search(db, k_neighbours)
+    distance, indecies = faiss_db.search(db, k_neighbours)
     print("Finishing search")
     classes_idx = classes[indecies]
     distance_class = {}
@@ -559,19 +567,37 @@ def make_knn(index, db, classes, average_distance):
             drop_loss.append(False)
     return drop_loss
 
+def create_faiss(dimenstion=1024):
+    cfg = faiss.GpuIndexFlatConfig()
+    cfg.useFloat16 = False
+    cfg.device = 0
+    faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
+    return faiss_db
 
 def create_dbs_for_classes(feature_db):
     set_datasets = set(feature_db[:,1])
-    dimension = 1024
-    datasets_dictionary = {}
+    classes_faiss = {}
     for dataset_id in set_datasets:
         indecies = np.where(feature_db[:,1]!=dataset_id)[0]
         features = feature_db[indecies, 7: ]
         features = features.astype('float32')
-        faiss_db = faiss.IndexFlatL2(dimension)
+
+        faiss_db = create_faiss()
+
+
         faiss_db.add(features)
-        datasets_dictionary[dataset_id] = faiss_db
-    return datasets_dictionary
+        classes_faiss[dataset_id] = faiss_db
+    return classes_faiss
+
+def create_db(db):
+    dimension = 1024
+    db = db.astype('float32')
+    cfg = faiss.GpuIndexFlatConfig()
+    cfg.useFloat16 = False
+    cfg.device = 0
+    faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
+    faiss_db.add(db)
+    return faiss_db
 
 
 
