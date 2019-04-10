@@ -202,7 +202,7 @@ class Generalized_RCNN(nn.Module):
                 idx = roidb[0]["dataset_idx"][0]
             else:
                 idx = -1
-            cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
+            cls_score, bbox_pred = self.Box_Outs(box_feat, idx, rpn_ret)
             if self.training:
 
                 cls_score_np = cls_score.detach().cpu().numpy()
