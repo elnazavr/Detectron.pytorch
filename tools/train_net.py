@@ -391,7 +391,7 @@ def main():
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
                 net_outputs = maskRCNN(**input_data)
-                preidcted_classes = net_outputs["faiss_db"]["class"]
+                preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
                 preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
                 roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
                 print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
