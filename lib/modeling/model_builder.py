@@ -199,7 +199,7 @@ class Generalized_RCNN(nn.Module):
             else:
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
             if self.training:
-                idx = roidb[0]["dataset_idx"][0]
+                idx = roidb[0]["dataset_idx"]
             else:
                 idx = -1
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
