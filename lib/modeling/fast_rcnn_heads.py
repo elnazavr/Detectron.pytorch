@@ -43,6 +43,7 @@ class fast_rcnn_outputs(nn.Module):
         return detectron_weight_mapping, orphan_in_detectron
 
     def forward(self, x, rpn_ret, idx=-1 ):
+        import ipdb; ipdb.set_trace()
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
         if self.training:
