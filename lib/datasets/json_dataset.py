@@ -364,7 +364,7 @@ class JsonDataset(object):
                     entry['gt_keypoints'], gt_keypoints, axis=0
                 )
                 entry['has_visible_keypoints'] = has_visible_keypoints
-            entry["dataset_idx"] = np.append(entry["dataset_idx"], dataset_idx)
+            entry["dataset_idx"] = dataset_idx
 
     def _add_proposals_from_file(
         self, roidb, proposal_file, min_proposal_size, top_k, crowd_thresh
