@@ -168,10 +168,10 @@ def _sample_rois(roidb, im_scale, batch_idx):
         gt_assignments = gt_inds[roidb['box_to_gt_ind_map'][keep_inds]]
         bbox_targets = _compute_targets(
             sampled_boxes, gt_boxes[gt_assignments, :], sampled_labels)
-        bbox_targets, bbox_inside_weights = _expand_bbox_targets(bbox_targets, roidb["dataset_idx"][0])
+        bbox_targets, bbox_inside_weights = _expand_bbox_targets(bbox_targets, roidb["dataset_idx"])
     else:
         bbox_targets, bbox_inside_weights = _expand_bbox_targets(
-            roidb['bbox_targets'][keep_inds, :], roidb["dataset_idx"][0])
+            roidb['bbox_targets'][keep_inds, :], roidb["dataset_idx"])
 
     bbox_outside_weights = np.array(
         bbox_inside_weights > 0, dtype=bbox_inside_weights.dtype)
