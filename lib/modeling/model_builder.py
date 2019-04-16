@@ -202,7 +202,7 @@ class Generalized_RCNN(nn.Module):
                 idx = roidb[0]["dataset_idx"]
             else:
                 idx = -1
-            cls_score, bbox_pred = self.Box_Outs(box_feat, idx, rpn_ret)
+            cls_score, bbox_pred, indecies_to_drop = self.Box_Outs(box_feat, idx, rpn_ret)
             if self.training:
 
                 cls_score_np = cls_score.detach().cpu().numpy()
@@ -225,6 +225,7 @@ class Generalized_RCNN(nn.Module):
                 if (k.startswith('rpn_cls_logits') or k.startswith('rpn_bbox_pred'))
             ))
             loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
+            import ipdb; ipdb.set_trace()
             if cfg.FPN.FPN_ON:
                 for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
                     return_dict['losses']['loss_rpn_cls_fpn%d' % lvl] = loss_rpn_cls[i]
