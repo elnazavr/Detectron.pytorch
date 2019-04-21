@@ -225,11 +225,29 @@ class Generalized_RCNN(nn.Module):
                 if (k.startswith('rpn_cls_logits') or k.startswith('rpn_bbox_pred'))
             ))
             loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
+
+            #null the ignore idecies:
+            length_fpn = []
+            for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
+                length_fpn.appennd(len(rpn_ret["rois_fpn" + str(lvl)]))
+
+            indecies_to_drop_fpn = {}
+            from_idx = 0
             import ipdb; ipdb.set_trace()
+            for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
+                to_idx = from_idx + len(rpn_ret["rois_fpn" + str(lvl)])
+                indecies_to_drop_fpn["rois_fpn" + str(lvl)] = [1] *  len(rpn_ret["rois_fpn" + str(lvl)])
+                idx_restore_per_level = rpn_ret["rois_idx_restore_int32"][from_idx:to_idx]
+                for fpn_idx, restore_idx in enumerate(idx_restore_per_level):
+                    if restore_idx in indecies_to_drop:
+                        indecies_to_drop_fpn["rois_fpn" + str(lvl)][fpn_idx]=0
+                from_idx = to_idx
+
+
             if cfg.FPN.FPN_ON:
                 for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
-                    return_dict['losses']['loss_rpn_cls_fpn%d' % lvl] = loss_rpn_cls[i]
-                    return_dict['losses']['loss_rpn_bbox_fpn%d' % lvl] = loss_rpn_bbox[i]
+                    return_dict['losses']['loss_rpn_cls_fpn%d' % lvl] =  indecies_to_drop_fpn["rois_fpn" + str(lvl)][fpn_idx]*loss_rpn_cls[i]
+                    return_dict['losses']['loss_rpn_bbox_fpn%d' % lvl] = indecies_to_drop_fpn["rois_fpn" + str(lvl)][fpn_idx]*loss_rpn_bbox[i]
             else:
                 return_dict['losses']['loss_rpn_cls'] = loss_rpn_cls
                 return_dict['losses']['loss_rpn_bbox'] = loss_rpn_bbox
