@@ -10,8 +10,8 @@ import utils.net as net_utils
 
 import numpy as np
 
-OBJECTNESS_THRESHOLD = 0.9;
-CLASS_THRESHOLD = 0.95;
+OBJECTNESS_THRESHOLD = 0.4;
+CLASS_THRESHOLD = 0.1;
 
 
 class fast_rcnn_outputs(nn.Module):
@@ -48,7 +48,6 @@ class fast_rcnn_outputs(nn.Module):
         return detectron_weight_mapping, orphan_in_detectron
 
     def forward(self, x, idx=-1, rpn_ret=None):
-        import ipdb; ipdb.set_trace()
         indecies_to_drop = []
 
         if x.dim() == 4:
@@ -58,7 +57,6 @@ class fast_rcnn_outputs(nn.Module):
             bbox_pred = self.bbox_pred[idx](x)
 
             cls_score_softmax = F.softmax(cls_score, dim=1)
-            import ipdb; ipdb.set_trace()
 
             objectness_score = rpn_ret["objective_scores"]
             cls_score_np = cls_score_softmax.detach().cpu().numpy()
@@ -66,18 +64,20 @@ class fast_rcnn_outputs(nn.Module):
             background_idx = np.where(chosen_classes==0)[0]
             background_objectness = objectness_score[background_idx]
             background_objectness_threshold = np.where(background_objectness > OBJECTNESS_THRESHOLD)[0]
-            import  ipdb; ipdb.set_trace()
             if len(background_objectness_threshold) > 0:
                 x_promising = x[background_objectness_threshold]
                 for i in range(len(self.cls_score)):
                     if i!=idx:
-                        cls_score_head_relative = self.cls_score[i](x_promising)
-                        cls_score_head_relative = F.softmax(cls_score_head_relative, dim=1)
-                        cls_score_head_relative_np = cls_score_head_relative.detach().cpu().numpy()
-                        cls_score_head_relative_np_foregraound_idx =  np.where(cls_score_head_relative_np!=0)[0]
-                        cls_score_foreground = cls_score_head_relative_np[cls_score_head_relative_np_foregraound_idx]
+                        class_score_per_head = F.softmax(self.cls_score[i](x_promising), dim=1).detach().cpu().numpy()
+
+                        class_predicted =  np.argmax(class_score_per_head, axis=1)
+                        class_predicted_score =  np.max(class_score_per_head, axis=1)
+
+                        foreground_class_predicted_idx = np.where(class_predicted!=0)[0]
+                        cls_score_foreground = class_predicted_score[foreground_class_predicted_idx]
+
                         indx_to_drop = np.where(cls_score_foreground> CLASS_THRESHOLD)[0]
-                        indecies_to_drop.extend(indx_to_drop)
+                        indecies_to_drop.extend(background_objectness_threshold[indx_to_drop])
         else:
             cls_score, bbox_pred = [], []
             for i in range(len(self.cls_score)):
@@ -87,6 +87,10 @@ class fast_rcnn_outputs(nn.Module):
                 cls_score.append(cls_score_head)
                 bbox_pred_head = self.bbox_pred[i](x)
                 bbox_pred.append(bbox_pred_head)
+        if len(indecies_to_drop)>0:
+            import ipdb;
+            ipdb.set_trace()
+
         return cls_score, bbox_pred, indecies_to_drop
 
 
