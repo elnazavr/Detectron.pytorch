@@ -61,13 +61,11 @@ class CollectAndDistributeFpnRpnProposalsOp(nn.Module):
             # distributing the proposals over FPN levels
             output_blob_names = roi_data.fast_rcnn.get_fast_rcnn_blob_names()
             blobs = {k: [] for k in output_blob_names}
-            import ipdb; ipdb.set_trace()
             roi_data.fast_rcnn.add_fast_rcnn_blobs(blobs, im_scales, roidb)
         else:
             # For inference we have a special code path that avoids some data
             # loader overhead
             blobs = distribute(rois, None)
-        import ipdb; ipdb.set_trace()
         return blobs
 
 
@@ -84,7 +82,6 @@ def collect(inputs, is_training):
     # Combine predictions across all levels and retain the top scoring
     rois = np.concatenate(roi_inputs)
     scores = np.concatenate(score_inputs).squeeze()
-    import ipdb; ipdb.set_trace()
     inds = np.argsort(-scores)[:post_nms_topN]
     rois = rois[inds, :]
     return rois, scores[inds]
