@@ -151,6 +151,8 @@ class JsonDataset(object):
             if os.path.exists(cache_filepath) and not cfg.DEBUG:
                 self.debug_timer.tic()
                 self._add_gt_from_cache(roidb, cache_filepath)
+
+
                 logger.debug(
                     '_add_gt_from_cache took {:.3f}s'.
                     format(self.debug_timer.toc(average=False))
@@ -171,6 +173,8 @@ class JsonDataset(object):
             if feature_db is not None:
                 for idx, roi in enumerate(roidb):
                     image_id = int(os.path.splitext(os.path.basename(roi["image"]))[0])
+                    #if self.dataset_idx >0:
+                    #    import ipdb; ipdb.set_trace()
                     if last_row_idx in image_to_idx.values():
                         import ipdb; ipdb.set_trace()
                     if len(roi["gt_classes"])>0:
@@ -362,7 +366,7 @@ class JsonDataset(object):
                     entry['gt_keypoints'], gt_keypoints, axis=0
                 )
                 entry['has_visible_keypoints'] = has_visible_keypoints
-            entry["dataset_idx"] = np.append(entry["dataset_idx"], dataset_idx)
+            entry["dataset_idx"] = dataset_idx
 
     def _add_proposals_from_file(
         self, roidb, proposal_file, min_proposal_size, top_k, crowd_thresh
