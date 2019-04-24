@@ -58,7 +58,10 @@ class DataParallel(Module):
             return
 
         if device_ids is None:
-            device_ids = list(range(torch.cuda.device_count()))
+            count_device_id = 1
+            if torch.cuda.device_count()>1:
+                count_device_id = torch.cuda.device_count()-1
+            device_ids = list(range(count_device_id))
         if output_device is None:
             output_device = device_ids[0]
         self.dim = dim
