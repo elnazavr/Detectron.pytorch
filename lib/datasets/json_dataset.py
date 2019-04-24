@@ -451,7 +451,7 @@ class JsonDataset(object):
         return gt_kps
 
 
-def add_proposals(roidb, rois, scales, crowd_thresh, scores = None):
+def add_proposals(roidb, rois, scales, crowd_thresh, scores = None, anchors_idx=None):
     """Add proposal boxes (rois) to an roidb that has ground-truth annotations
     but no proposals. If the proposals are not at the original image scale,
     specify the scale factor that separate them in scales.
@@ -461,18 +461,22 @@ def add_proposals(roidb, rois, scales, crowd_thresh, scores = None):
         inv_im_scale = 1. / scales[i]
         idx = np.where(rois[:, 0] == i)[0]
         box_list.append(rois[idx, 1:] * inv_im_scale)
-    _merge_proposal_boxes_into_roidb(roidb, box_list,scores_list=scores)
+    _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=scores, anchors_idx = anchors_idx)
     if crowd_thresh > 0:
         _filter_crowd_proposals(roidb, crowd_thresh)
     _add_class_assignments(roidb)
 
 
-def _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=None):
+def _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=None, anchors_idx=None):
     """Add proposal boxes to each roidb entry."""
     assert len(box_list) == len(roidb)
+    if len(roidb)!=1:
+        import sys
+        sys.exit("DO NOT SUPPORT >1 roidb")
     for i, entry in enumerate(roidb):
         boxes = box_list[i]
         scores = scores_list
+        anchors_idx = anchors_idx
         num_boxes = boxes.shape[0]
         gt_overlaps = np.zeros(
             (num_boxes, entry['gt_overlaps'].shape[1]),
@@ -487,10 +491,11 @@ def _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=None):
         # be filtered out later (see: _filter_crowd_proposals).
         gt_inds = np.where(entry['gt_classes'] > 0)[0]
 
-        gt_scores = []
+        gt_scores, gt_anchor_idx = [], []
         if len(gt_inds) > 0:
             gt_boxes = entry['boxes'][gt_inds, :]
             gt_scores = [-1] *len(gt_boxes)
+            gt_anchor_idx = [-1] * len(gt_inds)
             gt_classes = entry['gt_classes'][gt_inds]
             proposal_to_gt_overlaps = box_utils.bbox_overlaps(
                 boxes.astype(dtype=np.float32, copy=False),
@@ -537,6 +542,10 @@ def _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=None):
         entry["objective_scores"] = np.append(
             gt_scores,
             scores)
+        entry["indecies_anchors"] = np.append(
+            gt_anchor_idx,
+            anchors_idx
+        )
 
 
 def _filter_crowd_proposals(roidb, crowd_thresh):
@@ -559,7 +568,7 @@ def _filter_crowd_proposals(roidb, crowd_thresh):
         entry['gt_overlaps'] = scipy.sparse.csr_matrix(gt_overlaps)
 
 
-def _add_class_assignments(roidb):
+def  _add_class_assignments(roidb):
     """Compute object category assignment for each box associated with each
     roidb entry.
     """
