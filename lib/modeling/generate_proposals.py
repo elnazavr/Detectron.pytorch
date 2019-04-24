@@ -88,7 +88,7 @@ class GenerateProposalsOp(nn.Module):
 
         rois = np.empty((0, 5), dtype=np.float32)
         roi_probs = np.empty((0, 1), dtype=np.float32)
-        roi_indecies = np.empty((0, 1), dtype=np.float32)
+        roi_indecies = np.empty((0, 1), dtype=np.int)
         for im_i in range(num_images):
             im_i_boxes, im_i_probs, im_i_indeces = self.proposals_for_one_image(
                 im_info[im_i, :], all_anchors, bbox_deltas[im_i, :, :, :],
@@ -98,14 +98,12 @@ class GenerateProposalsOp(nn.Module):
             im_i_rois = np.hstack((batch_inds, im_i_boxes))
             rois = np.append(rois, im_i_rois, axis=0)
             roi_probs = np.append(roi_probs, im_i_probs, axis=0)
+            im_i_indeces = im_i_indeces.reshape((len(im_i_indeces),1))
             roi_indecies = np.append(roi_indecies, im_i_indeces, axis=0)
-
-        return rois, roi_probs  # Note: ndarrays
+        return rois, roi_probs, roi_indecies  # Note: ndarrays
 
     def proposals_for_one_image(self, im_info, all_anchors, bbox_deltas, scores):
         # Get mode-dependent configuration
-        import ipdb;
-        ipdb.set_trace()
         cfg_key = 'TRAIN' if self.training else 'TEST'
         pre_nms_topN = cfg[cfg_key].RPN_PRE_NMS_TOP_N
         post_nms_topN = cfg[cfg_key].RPN_POST_NMS_TOP_N
