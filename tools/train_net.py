@@ -11,8 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
-
+os.environ["CUDA_VISIBLE_DEVICES"]="1,2"
 
 import numpy as np
 import yaml
@@ -180,7 +179,7 @@ def main():
     original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
     if args.batch_size is None:
         args.batch_size = original_batch_size
-    cfg.NUM_GPUS = torch.cuda.device_count()
+    cfg.NUM_GPUS = torch.cuda.device_count() - 1
     assert (args.batch_size % cfg.NUM_GPUS) == 0, \
         'batch_size: %d, NUM_GPUS: %d' % (args.batch_size, cfg.NUM_GPUS)
     cfg.TRAIN.IMS_PER_BATCH = args.batch_size // cfg.NUM_GPUS
@@ -229,7 +228,10 @@ def main():
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
         ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
 
-    C = set(dataset_to_classes.values())
+    C = []
+    for x in dataset_to_classes.values():
+        C.extend(x)
+    C = set(C)
 
     # roidb_new = []
     # import copy
@@ -377,9 +379,6 @@ def main():
     else:
         number_epochs = args.num_epochs
 
-    datasets_dictionary = create_dbs_for_classes(feature_db)
-    median_distance_class = [np.inf] * cfg.MODEL.NUM_CLASSES
-
 
     print("Total number of epochs: ", number_epochs)
 
@@ -389,9 +388,11 @@ def main():
         global_step = iters_per_epoch * args.start_epoch + args.step
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
             # ---- Start of epoch ----
-            feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
-            classes_faiss = create_dbs_for_classes(feature_db)
-            median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
+            if args.bbbp:
+                feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
+                classes_faiss, dataset_idx_to_classes = create_dbs_for_datasets(feature_db)
+                median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
+                print("Median distance class", median_distance_class)
 
             # adjust learning rate
             if args.lr_decay_epochs and args.epoch == args.lr_decay_epochs[0] and args.start_iter == 0:
@@ -414,16 +415,19 @@ def main():
                 preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
                 if args.bbbp:
                     for idx, roi in enumerate(roidb_batch):
-                        dataset_idx = roi["dataset_idx"][0]
+                        dataset_idx = roi["dataset_idx"]
                         c_plus = dataset_to_classes[dataset_idx]
                         c_minus = set(C) - set(c_plus)
-                        drop_loss = np.ones(shape=predicted_class.shape)
+                        drop_loss = np.ones(shape=preidcted_classes.shape)
                         for idx, predicted_class in enumerate(preidcted_classes):
                             if predicted_class!=0:
-                                if predicted_class in c_minus and preidcted_classes_score[idx]>0.5:
+                                if predicted_class in c_minus and preidcted_classes_score[idx]>0.01:
+
+                                    import ipdb;
+                                    ipdb.set_trace()
                                     feature = preidcted_features[idx]
-                                    idx, distance = classes_faiss[predicted_class].search(feature, 1)
-                                    if distance < median_distance_class[predicted_class]:
+                                    distance, idx = classes_faiss[dataset_idx].search(np.array([feature]), 1)
+                                    if idx[0]==dataset_idx_to_classes[predicted_class] and  distance < median_distance_class[predicted_class]:
                                         drop_loss[idx] = 0
 
 
@@ -456,14 +460,6 @@ def main():
             net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
             # reset starting iter number after first epoch
             args.start_iter = 0
-            if args.bbbp:
-                dimension = 1024
-                feature_db = update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feature_db, output_dir)
-                features = feature_db[:, 7:]
-                features = features.astype('float32')
-                faiss_db = faiss.IndexFlatL2(dimension)
-                faiss_db.add(features)
-                median_distance_class = find_threhold_for_each_class(faiss_db, features, feature_db[:, 2], k_neighbours=5)
 
 
 
@@ -490,7 +486,6 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
     for val_data in zip(dataloader_groundtruth):
         output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
         print("Iteration", k)
-        # mport ipdb; ipdb.set_trace()
         val_data = val_data[0]
         for key in val_data:
             if key != 'roidb':  # roidb is a list of ndarrays with inconsistent length
@@ -528,10 +523,10 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
 def find_threhold_for_each_class(db, classes, k_neighbours=10):
     print("Creating database")
     faiss_db = create_faiss()
-    faiss_db.add(db)
+    faiss_db.add(np.ascontiguousarray(db))
 
     print("Doing search")
-    distance, indecies = faiss_db.search(db, k_neighbours)
+    distance, indecies = faiss_db.search(np.ascontiguousarray(db), k_neighbours)
     print("Finishing search")
     classes_idx = classes[indecies]
     distance_class = {}
@@ -567,37 +562,43 @@ def make_knn(index, db, classes, average_distance):
             drop_loss.append(False)
     return drop_loss
 
-def create_faiss(dimenstion=1024):
+def create_faiss(dimension=1024):
+
     cfg = faiss.GpuIndexFlatConfig()
     cfg.useFloat16 = False
-    cfg.device = 0
+    cfg.device = 1
     faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
     return faiss_db
 
-def create_dbs_for_classes(feature_db):
+def create_dbs_for_datasets(feature_db):
     set_datasets = set(feature_db[:,1])
+    dataset_idx_to_classes = {}
     classes_faiss = {}
     for dataset_id in set_datasets:
+        dataset_idx_to_classes[dataset_id] = []
         indecies = np.where(feature_db[:,1]!=dataset_id)[0]
         features = feature_db[indecies, 7: ]
         features = features.astype('float32')
 
+        dataset_idx_to_classes[dataset_id] = feature_db[indecies, 2 ]
+
         faiss_db = create_faiss()
-
-
         faiss_db.add(features)
         classes_faiss[dataset_id] = faiss_db
-    return classes_faiss
+    return classes_faiss, dataset_idx_to_classes
 
-def create_db(db):
-    dimension = 1024
-    db = db.astype('float32')
-    cfg = faiss.GpuIndexFlatConfig()
-    cfg.useFloat16 = False
-    cfg.device = 0
-    faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
-    faiss_db.add(db)
-    return faiss_db
+def create_dbs_for_classes(feature_db):
+    set_classes = set(feature_db[:,2])
+    classes_faiss = {}
+    for class_id in set_classes:
+        indecies = np.where(feature_db[:,2]!=class_id)[0]
+        features = feature_db[indecies, 7: ]
+        features = features.astype('float32')
+
+        faiss_db = create_faiss()
+        faiss_db.add(features)
+        classes_faiss[class_id] = faiss_db
+    return classes_faiss
 
 
 
