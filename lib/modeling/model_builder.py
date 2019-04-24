@@ -173,22 +173,14 @@ class Generalized_RCNN(nn.Module):
                 return_dict["ground_truth"][i] = {}
                 for lvl in range(lvl_min, lvl_max + 1):
                     rpn_ret["rois_fpn" + str(lvl)] = []
-                #roidb_des  = blob_utils.deserialize(roidb[i])[0]
-                #if int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])==327701:
-                #    import ipdb; ipdb.set_trace()
                 target_lvls = fpn_utils.map_rois_to_fpn_levels(roidb[i]["boxes"],lvl_min, lvl_max)
-                #fpn_utils.add_multilevel_roi_blobs(rpn_ret, 'rois', roidb[i]["boxes"], target_lvls, lvl_min,lvl_max)
                 boxes = np.array(list(map(lambda x: np.append([i], x), roidb[i]["boxes"])))
                 fpn_utils.add_multilevel_roi_blobs(rpn_ret, 'rois', boxes, target_lvls, lvl_min, lvl_max)
                 for key in rpn_ret.keys():
                     rpn_ret[key] = np.array(rpn_ret[key])
-                #rpn_ret["rois_idx_restore_int32"] = np.array(range(len(target_lvls)))
-                #import ipdb; ipdb.set_trace()
 
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
                 return_dict["ground_truth"][i]["features"] = box_feat
-
-                #import ipdb; ipdb.set_trace()
                 return_dict["ground_truth"][i]["bbox"] = roidb[i]["boxes"]
                 return_dict["ground_truth"][i]["classes"] = roidb[i]["gt_classes"]
                 return_dict["ground_truth"][i]["image"] = int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])
@@ -214,7 +206,7 @@ class Generalized_RCNN(nn.Module):
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
             cls_score, bbox_pred = self.Box_Outs(box_feat)
 
-            cls_score_np = cls_score.detach().cpu().numpy()
+            cls_score_np = F.softmax(cls_score).detach().cpu().numpy()
             if self.training:
                 return_dict['faiss_db']['bbox_feat'] = box_feat
                 return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
