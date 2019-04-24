@@ -33,7 +33,6 @@ class RoiDataLoader(data.Dataset):
         for key in blobs:
             if key != 'roidb':
                 blobs[key] = blobs[key].squeeze(axis=0)
-
         if self._roidb[index]['need_crop']:
             self.crop_data(blobs, ratio)
             # Check bounding box
@@ -43,8 +42,7 @@ class RoiDataLoader(data.Dataset):
             valid_inds = np.nonzero(~ invalid)[0]
             if len(valid_inds) < len(boxes):
                 for key in ['boxes', 'gt_classes', 'seg_areas', 'gt_overlaps', 'is_crowd',
-                            'box_to_gt_ind_map', 'gt_keypoints', "image", "dataset_idx" ,"dataset"]:
-
+                            'box_to_gt_ind_map', 'gt_keypoints', "image", "dataset_idx"]:
                     if key in entry:
                         entry[key] = entry[key][valid_inds]
                 entry['segms'] = [entry['segms'][ind] for ind in valid_inds]
