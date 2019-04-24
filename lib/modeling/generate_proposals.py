@@ -52,7 +52,7 @@ class GenerateProposalsOp(nn.Module):
         # 6. apply NMS with a loose threshold (0.7) to the remaining proposals
         # 7. take after_nms_topN proposals after NMS
         # 8. return the top proposals
-        
+
         """Type conversion"""
         # predicted probability of fg object for each RPN anchor
         scores = rpn_cls_prob.data.cpu().numpy()
@@ -88,8 +88,9 @@ class GenerateProposalsOp(nn.Module):
 
         rois = np.empty((0, 5), dtype=np.float32)
         roi_probs = np.empty((0, 1), dtype=np.float32)
+        roi_indecies = np.empty((0, 1), dtype=np.float32)
         for im_i in range(num_images):
-            im_i_boxes, im_i_probs = self.proposals_for_one_image(
+            im_i_boxes, im_i_probs, im_i_indeces = self.proposals_for_one_image(
                 im_info[im_i, :], all_anchors, bbox_deltas[im_i, :, :, :],
                 scores[im_i, :, :, :])
             batch_inds = im_i * np.ones(
@@ -97,11 +98,14 @@ class GenerateProposalsOp(nn.Module):
             im_i_rois = np.hstack((batch_inds, im_i_boxes))
             rois = np.append(rois, im_i_rois, axis=0)
             roi_probs = np.append(roi_probs, im_i_probs, axis=0)
+            roi_indecies = np.append(roi_indecies, im_i_indeces, axis=0)
 
         return rois, roi_probs  # Note: ndarrays
 
     def proposals_for_one_image(self, im_info, all_anchors, bbox_deltas, scores):
         # Get mode-dependent configuration
+        import ipdb;
+        ipdb.set_trace()
         cfg_key = 'TRAIN' if self.training else 'TEST'
         pre_nms_topN = cfg[cfg_key].RPN_PRE_NMS_TOP_N
         post_nms_topN = cfg[cfg_key].RPN_POST_NMS_TOP_N
@@ -136,9 +140,12 @@ class GenerateProposalsOp(nn.Module):
                                    pre_nms_topN)[:pre_nms_topN]
             order = np.argsort(-scores[inds].squeeze())
             order = inds[order]
+        indecies = np.arange(0, len(scores))
+
         bbox_deltas = bbox_deltas[order, :]
         all_anchors = all_anchors[order, :]
         scores = scores[order]
+        indecies = indecies[order]
 
         # Transform anchors into proposals via bbox transformations
         proposals = box_utils.bbox_transform(all_anchors, bbox_deltas,
@@ -152,6 +159,7 @@ class GenerateProposalsOp(nn.Module):
         keep = _filter_boxes(proposals, min_size, im_info)
         proposals = proposals[keep, :]
         scores = scores[keep]
+        indecies = indecies[keep]
         # print('pre_nms:', proposals.shape, scores.shape)
 
         # 6. apply loose nms (e.g. threshold = 0.7)
@@ -164,8 +172,9 @@ class GenerateProposalsOp(nn.Module):
                 keep = keep[:post_nms_topN]
             proposals = proposals[keep, :]
             scores = scores[keep]
+            indecies = indecies[keep]
         # print('final proposals:', proposals.shape, scores.shape)
-        return proposals, scores
+        return proposals, scores, indecies
 
 
 def _filter_boxes(boxes, min_size, im_info):
