@@ -371,6 +371,7 @@ def main():
 
 
     print("Total number of epochs: ", number_epochs)
+    objective_k_threholds = {}
 
     try:
         logger.info('Training starts !')
@@ -390,29 +391,15 @@ def main():
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
+                input_data["objective_k_threholds"] =[objective_k_threholds]
                 net_outputs = maskRCNN(**input_data)
+                objective_k_threholds = net_outputs["objective_k_threholds"]
+
                 preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
                 roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
                 print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
                 print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],
                       [roi["gt_classes"] for roi in roidb_batch])
-
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
-                preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
-                preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                foreground = net_outputs['faiss_db']["foreground"]
-                if args.bbbp:
-                    import ipdb; ipdb.set_trace()
-                    roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                    for roi in roidb_batch:
-                        dataset_idx = roi["dataset_idx"]
-                        if dataset_idx==1:
-                            pass
-
-                    #detect dataset
-                    #detect if the predicted clas is not from the dataset
-                    #detect probabability of being the object
 
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
