@@ -223,33 +223,31 @@ class Generalized_RCNN(nn.Module):
 
 
             #null the ignore idecies:
+            lens = []
+            levels_to_idx = {}
 
-            indecies_to_drop_fpn = {}
-            from_idx = 0
+            indecies_to_drop_cumalitve = rpn_ret["rois_idx_restore_int32"][indecies_to_drop]
+
             for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
                 if "rois_fpn" + str(lvl) in rpn_ret.keys():
-                    to_idx = from_idx + len(rpn_ret["rois_fpn" + str(lvl)])
-                    indecies_to_drop_fpn["weights_rois_fpn" + str(lvl)] = [1] *  len(rpn_ret["rois_fpn" + str(lvl)])
-                    idx_restore_per_level = rpn_ret["rois_idx_restore_int32"][from_idx:to_idx]
-                    if len(idx_restore_per_level) >0:
-                        for fpn_idx, restore_idx in enumerate(idx_restore_per_level):
-                            if restore_idx in indecies_to_drop:
-                                indecies_to_drop_fpn["weights_rois_fpn" + str(lvl)][fpn_idx]=0
-                    from_idx = to_idx
-
-            # rpn_kwargs.update(dict(
-            #     (k, rpn_ret[k]) for k in rpn_ret.keys()
-            #     if (k.startswith('rpn_cls_logits') or k.startswith('rpn_bbox_pred'))
-            # ))
+                    lens.append(len(rpn_ret["rois_fpn" + str(lvl)]))
+                    levels_to_idx[lvl] = []
+            cumulative_lens = [np.sum(lens[:i+1]) for i in range(len(lens))]
+            for idx_roi, idx_cum in zip(indecies_to_drop, indecies_to_drop_cumalitve):
+                for idx_lvl in range(len(cumulative_lens)):
+                    if idx_cum < cumulative_lens[idx_lvl]:
+                        levels_to_idx[cfg.FPN.RPN_MIN_LEVEL+idx_lvl].append(idx_roi)
+                        break;
+            for lvl in levels_to_idx.keys():
+                _, A, H, W = rpn_ret["rpn_cls_logits_fpn" + str(lvl)].shape
+                if len(levels_to_idx[lvl]) > 0 :
+                    for roi_idx in levels_to_idx[lvl]:
+                        idx = rpn_ret["indecies_anchors"][roi_idx]
+                        if idx!=-1:
+                            h, w, a = get_hwa(idx, A, W)
+                            print(lvl, roi_idx, idx, get_hwa(idx, A, W))
+                            rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
             rpn_kwargs.update(rpn_ret)
-            rpn_kwargs.update(indecies_to_drop_fpn)
-            if len(indecies_to_drop) > 0:
-                import pickle
-                import sys
-                with open("kwargs.pkl", "wb") as f:
-                    pickle.dump(rpn_kwargs, f)
-                sys.exit(0)
-
 
             loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
 
@@ -464,9 +462,10 @@ def create_db(db):
     return faiss_db
 
 
-def find_closest_class_for_background(faiss_db, db,  looked_features, threholds,  k_neighbours=10):
-    distance, indecies = faiss_db.search(looked_features, k_neighbours)
-    
-
+def get_hwa(idx, A,W):
+    h = idx // (A*W)
+    w = (idx- h*A*W)//A
+    a = idx - h*A*W - w*A
+    return h,w,a
 
 
