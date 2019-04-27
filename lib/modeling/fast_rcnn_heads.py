@@ -49,6 +49,7 @@ class fast_rcnn_outputs(nn.Module):
 
     def forward(self, x, idx=-1, rpn_ret=None):
         indecies_to_drop = []
+        print(x.shape)
 
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
@@ -61,11 +62,22 @@ class fast_rcnn_outputs(nn.Module):
             objectness_score = rpn_ret["objective_scores"]
             cls_score_np = cls_score_softmax.detach().cpu().numpy()
             chosen_classes = np.argmax(cls_score_np, axis=1)
+            right_detected_foreground_idx = np.where((rpn_ret['labels_int32']==chosen_classes) & (rpn_ret['labels_int32']!=0))[0]
+            right_detected_foreground_score = np.max(cls_score_np[right_detected_foreground_idx], axis=1)
+            right_detected_foreground_labels = chosen_classes[right_detected_foreground_idx]
+            if len(right_detected_foreground_idx) >0:
+                for label, label_score in zip(right_detected_foreground_labels, right_detected_foreground_score):
+                    if label not in rpn_ret["objective_k_threholds"].keys():
+                        rpn_ret["objective_k_threholds"][label] = []
+                    rpn_ret["objective_k_threholds"][label].append(label_score)
+                    print("THRESHOLD: ", rpn_ret["objective_k_threholds"].keys())
+
             background_idx = np.where(chosen_classes==0)[0]
+
             background_objectness = objectness_score[background_idx]
-            background_objectness_threshold = np.where(background_objectness > OBJECTNESS_THRESHOLD)[0]
-            if len(background_objectness_threshold) > 0:
-                x_promising = x[background_objectness_threshold]
+            background_objectness_threshold_idx = np.where(background_objectness > OBJECTNESS_THRESHOLD)[0]
+            if len(background_objectness_threshold_idx) > 0:
+                x_promising = x[background_objectness_threshold_idx]
                 for i in range(len(self.cls_score)):
                     if i!=idx:
                         class_score_per_head = F.softmax(self.cls_score[i](x_promising), dim=1).detach().cpu().numpy()
@@ -75,9 +87,13 @@ class fast_rcnn_outputs(nn.Module):
 
                         foreground_class_predicted_idx = np.where(class_predicted!=0)[0]
                         cls_score_foreground = class_predicted_score[foreground_class_predicted_idx]
-
-                        indx_to_drop = np.where(cls_score_foreground> CLASS_THRESHOLD)[0]
-                        indecies_to_drop.extend(background_objectness_threshold[indx_to_drop])
+                        class_predicted_foreground = class_predicted[foreground_class_predicted_idx]
+                        #import ipdb; ipdb.set_trace()
+                        for score, label in zip(cls_score_foreground, class_predicted_foreground):
+                            if label in rpn_ret["objective_k_threholds"].keys():
+                                class_threshold = np.sum(rpn_ret["objective_k_threholds"][label]) / len(rpn_ret["objective_k_threholds"][label])
+                                indx_to_drop = np.where(cls_score_foreground> class_threshold)[0]
+                                indecies_to_drop.append(background_objectness_threshold_idx[indx_to_drop])
         else:
             cls_score, bbox_pred = [], []
             for i in range(len(self.cls_score)):
@@ -87,9 +103,6 @@ class fast_rcnn_outputs(nn.Module):
                 cls_score.append(cls_score_head)
                 bbox_pred_head = self.bbox_pred[i](x)
                 bbox_pred.append(bbox_pred_head)
-        if len(indecies_to_drop)>0:
-            import ipdb;
-            ipdb.set_trace()
 
         return cls_score, bbox_pred, indecies_to_drop
 
