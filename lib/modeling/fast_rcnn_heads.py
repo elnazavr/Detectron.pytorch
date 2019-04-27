@@ -47,7 +47,7 @@ class fast_rcnn_outputs(nn.Module):
         orphan_in_detectron = []
         return detectron_weight_mapping, orphan_in_detectron
 
-    def forward(self, x, idx=-1, rpn_ret=None):
+    def forward(self, x, idx=-1, rpn_ret=None, objective_k_threholds = {}):
         indecies_to_drop = []
         print(x.shape)
 
@@ -67,10 +67,10 @@ class fast_rcnn_outputs(nn.Module):
             right_detected_foreground_labels = chosen_classes[right_detected_foreground_idx]
             if len(right_detected_foreground_idx) >0:
                 for label, label_score in zip(right_detected_foreground_labels, right_detected_foreground_score):
-                    if label not in rpn_ret["objective_k_threholds"].keys():
-                        rpn_ret["objective_k_threholds"][label] = []
-                    rpn_ret["objective_k_threholds"][label].append(label_score)
-                    print("THRESHOLD: ", rpn_ret["objective_k_threholds"].keys())
+                    if label not in  objective_k_threholds.keys():
+                        objective_k_threholds[label] = []
+                    objective_k_threholds[label].append(label_score)
+                    print("THRESHOLD: ", [(key,len(value)) for key,value in objective_k_threholds.items()])
 
             background_idx = np.where(chosen_classes==0)[0]
 
@@ -88,9 +88,11 @@ class fast_rcnn_outputs(nn.Module):
                         foreground_class_predicted_idx = np.where(class_predicted!=0)[0]
                         cls_score_foreground = class_predicted_score[foreground_class_predicted_idx]
                         class_predicted_foreground = class_predicted[foreground_class_predicted_idx]
-                        #import ipdb; ipdb.set_trace()
+                        #
                         for score, label in zip(cls_score_foreground, class_predicted_foreground):
                             if label in rpn_ret["objective_k_threholds"].keys():
+                                import ipdb;
+                                ipdb.set_trace()
                                 class_threshold = np.sum(rpn_ret["objective_k_threholds"][label]) / len(rpn_ret["objective_k_threholds"][label])
                                 indx_to_drop = np.where(cls_score_foreground> class_threshold)[0]
                                 indecies_to_drop.append(background_objectness_threshold_idx[indx_to_drop])
@@ -104,7 +106,7 @@ class fast_rcnn_outputs(nn.Module):
                 bbox_pred_head = self.bbox_pred[i](x)
                 bbox_pred.append(bbox_pred_head)
 
-        return cls_score, bbox_pred, indecies_to_drop
+        return cls_score, bbox_pred, indecies_to_drop, objective_k_threholds
 
 
 def fast_rcnn_losses(cls_score, bbox_pred, label_int32, bbox_targets,
