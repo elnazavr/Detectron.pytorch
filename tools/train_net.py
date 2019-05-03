@@ -381,7 +381,7 @@ def main():
 
 
     print("Total number of epochs: ", number_epochs)
-
+    classes_faiss = {}
     try:
         logger.info('Training starts !')
         args.step = args.start_iter
@@ -390,7 +390,8 @@ def main():
             # ---- Start of epoch ----
             if args.bbbp:
                 feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
-                classes_faiss, dataset_idx_to_classes = create_dbs_for_datasets(feature_db)
+                classes_faiss, dataset_idx_to_classes = create_dbs_for_datasets(feature_db, classes_faiss)
+                #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
                 median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
                 print("Median distance class", median_distance_class)
 
@@ -405,30 +406,36 @@ def main():
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
+                input_data['bbbp'] = [args.bbbp]
+                input_data['classes_faiss'] = [classes_faiss]
+                input_data['dataset_to_classes'] = [dataset_to_classes]
+                input_data['dataset_idx_to_classes'] = [dataset_idx_to_classes]
+                input_data['median_distance_class'] = [median_distance_class]
+                input_data['C'] = [list(C)]
                 net_outputs = maskRCNN(**input_data)
 
-                preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"].detach().cpu().numpy()
-                roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                print("Image" , [(os.path.basename(roi["image"]),  roi["dataset_idx"]) for roi in roidb_batch])
-                print(len(preidcted_classes), [cl for cl in preidcted_classes if cl!=0], [roi["gt_classes"] for roi in roidb_batch])
-                preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                if args.bbbp:
-                    for idx, roi in enumerate(roidb_batch):
-                        dataset_idx = roi["dataset_idx"]
-                        c_plus = dataset_to_classes[dataset_idx]
-                        c_minus = set(C) - set(c_plus)
-                        drop_loss = np.ones(shape=preidcted_classes.shape)
-                        for idx, predicted_class in enumerate(preidcted_classes):
-                            if predicted_class!=0:
-                                if predicted_class in c_minus and preidcted_classes_score[idx]>0.01:
-
-                                    import ipdb;
-                                    ipdb.set_trace()
-                                    feature = preidcted_features[idx]
-                                    distance, idx = classes_faiss[dataset_idx].search(np.array([feature]), 1)
-                                    if idx[0]==dataset_idx_to_classes[predicted_class] and  distance < median_distance_class[predicted_class]:
-                                        drop_loss[idx] = 0
+                # preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
+                # preidcted_classes_score = net_outputs["faiss_db"]["class_score"].detach().cpu().numpy()
+                # roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                # print("Image" , [(os.path.basename(roi["image"]),  roi["dataset_idx"]) for roi in roidb_batch])
+                # print(len(preidcted_classes), [cl for cl in preidcted_classes if cl!=0], [roi["gt_classes"] for roi in roidb_batch])
+                # preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
+                # if args.bbbp:
+                #     for idx, roi in enumerate(roidb_batch):
+                #         dataset_idx = roi["dataset_idx"]
+                #         c_plus = dataset_to_classes[dataset_idx]
+                #         c_minus = set(C) - set(c_plus)
+                #         drop_loss = np.ones(shape=preidcted_classes.shape)
+                #         for idx, predicted_class in enumerate(preidcted_classes):
+                #             if predicted_class!=0:
+                #                 if predicted_class in c_minus and preidcted_classes_score[idx]>0.01:
+                #
+                #                     import ipdb;
+                #                     ipdb.set_trace()
+                #                     feature = preidcted_features[idx]
+                #                     distance, idx = classes_faiss[dataset_idx].search(np.array([feature]), 1)
+                #                     if idx[0]==dataset_idx_to_classes[predicted_class] and  distance < median_distance_class[predicted_class]:
+                #                         drop_loss[idx] = 0
 
 
                     #detect dataset
@@ -585,6 +592,31 @@ def create_dbs_for_datasets(feature_db):
         faiss_db = create_faiss()
         faiss_db.add(features)
         classes_faiss[dataset_id] = faiss_db
+    return classes_faiss, dataset_idx_to_classes
+
+
+def create_dbs_for_datasets(feature_db, classes_faiss=None):
+    set_datasets = set(feature_db[:,1])
+    dataset_idx_to_classes = {}
+    if classes_faiss is None:
+        classes_faiss = {}
+    for dataset_id in set_datasets:
+        dataset_idx_to_classes[dataset_id] = []
+        indecies = np.where(feature_db[:,1]!=dataset_id)[0]
+        features = feature_db[indecies, 7: ]
+        features = features.astype('float32')
+
+        dataset_idx_to_classes[dataset_id] = feature_db[indecies, 2 ]
+        if dataset_id not in classes_faiss.keys():
+            faiss_db = create_faiss()
+            faiss_db.add(features)
+            classes_faiss[dataset_id] = faiss_db
+        else:
+            classes_faiss[dataset_id].reset()
+            print("After reset", classes_faiss[dataset_id].ntotal)
+            classes_faiss[dataset_id].add(features)
+            print("After add", classes_faiss[dataset_id].ntotal)
+
     return classes_faiss, dataset_idx_to_classes
 
 def create_dbs_for_classes(feature_db):

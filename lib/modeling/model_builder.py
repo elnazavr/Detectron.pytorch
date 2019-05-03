@@ -140,15 +140,59 @@ class Generalized_RCNN(nn.Module):
             for p in self.Conv_Body.parameters():
                 p.requires_grad = False
 
-    def forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
+    def forward(self, data, im_info,
+                 roidb=None,
+                 only_bbox=None,
+                 image_to_idx=None,
+                 bbbp=False,
+                 dataset_to_classes= {},
+                 C = set(),
+                 classes_faiss = None,
+                 dataset_idx_to_classes = None,
+                 median_distance_class = None,
+                **rpn_kwargs):
         if cfg.PYTORCH_VERSION_LESS_THAN_040:
-            return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
+            return self._forward(data, im_info,
+                  roidb,
+                 only_bbox,
+                 image_to_idx,
+                 bbbp,
+                 dataset_to_classes,
+                 C,
+                 classes_faiss,
+                 dataset_idx_to_classes,
+                 median_distance_class,
+                **rpn_kwargs)
         else:
             with torch.set_grad_enabled(self.training):
-                return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
+                return self._forward(
+                 data,
+                 im_info,
+                 roidb,
+                 only_bbox,
+                 image_to_idx,
+                 bbbp,
+                 dataset_to_classes,
+                 C,
+                 classes_faiss,
+                 dataset_idx_to_classes,
+                 median_distance_class,
+                **rpn_kwargs)
 
 
-    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
+    def _forward(self, data,
+                 im_info,
+                 roidb=None,
+                 only_bbox=None,
+                 image_to_idx=None,
+                 bbbp=False,
+                 dataset_to_classes= {},
+                 C = set(),
+                 classes_faiss = None,
+                 dataset_idx_to_classes = None,
+                 median_distance_class = None,
+
+                 **rpn_kwargs):
         im_data = data
         if self.training or only_bbox:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
@@ -217,6 +261,33 @@ class Generalized_RCNN(nn.Module):
         else:
             # TODO: complete the returns for RPN only situation
             pass
+
+
+
+        if bbbp and self.training:
+            preidcted_classes = np.argmax(cls_score_np, axis=1)
+            preidcted_classes_score = np.max(cls_score_np, axis=1)
+            preidcted_features = box_feat
+            for idx, roi in enumerate(roidb):
+                dataset_idx = roi["dataset_idx"]
+                c_plus = dataset_to_classes[dataset_idx]
+                c_minus = set(C) - set(c_plus)
+                for idx, predicted_class in enumerate(preidcted_classes):
+                    if predicted_class != 0:
+                        if predicted_class in c_minus and preidcted_classes_score[idx] > 0.01:
+
+
+                            feature = preidcted_features[idx]
+                            distance, idx = classes_faiss[dataset_idx].search(np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
+                            if predicted_class == dataset_idx_to_classes[dataset_idx][idx] and distance < median_distance_class[predicted_class]:
+                                import ipdb;
+                                ipdb.set_trace()
+                                rpn_ret['labels_int32'][idx] = -1
+
+                            #distance, idx = classes_faiss[predicted_class].search(
+                            #    np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
+                            #if predicted_class == dataset_idx_to_classes[dataset_idx][idx] and distance < median_distance_class[predicted_class]:
+                            #    rpn_ret['labels_int32'][idx] = -1
 
         if self.training:
             return_dict['losses'] = {}

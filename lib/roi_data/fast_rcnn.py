@@ -51,6 +51,8 @@ def get_fast_rcnn_blob_names(is_training=True):
         # this binary vector sepcifies the subset of active targets
         blob_names += ['bbox_inside_weights']
         blob_names += ['bbox_outside_weights']
+        blob_names += ["objective_scores"]
+        blob_names += ["indecies_anchors"]
     if is_training and cfg.MODEL.MASK_ON:
         # 'mask_rois': RoIs sampled for training the mask prediction branch.
         # Shape is (#masks, 5) in format (batch_idx, x1, y1, x2, y2).
