@@ -72,7 +72,6 @@ def fpn_ResNet152_conv5_P2only_body():
 # ---------------------------------------------------------------------------- #
 class fpn(nn.Module):
     """Add FPN connections based on the model described in the FPN paper.
-
     fpn_output_blobs is in reversed order: e.g [fpn5, fpn4, fpn3, fpn2]
     similarly for fpn_level_info.dims: e.g [2048, 1024, 512, 256]
     similarly for spatial_scale: e.g [1/32, 1/16, 1/8, 1/4]
@@ -380,6 +379,7 @@ class fpn_rpn_outputs(nn.Module):
         return_dict = {}
         rois_blobs = []
         score_blobs = []
+        indecies_blobs = []
         for lvl in range(k_min, k_max + 1):
             slvl = str(lvl)
             bl_in = blobs_in[k_max - lvl]  # blobs_in is in reversed order
@@ -405,15 +405,16 @@ class fpn_rpn_outputs(nn.Module):
                     fpn_rpn_cls_probs = F.sigmoid(fpn_rpn_cls_score)
 
 
-                fpn_rpn_rois, fpn_rpn_roi_probs = self.GenerateProposals_modules[lvl - k_min](fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info)
+                fpn_rpn_rois, fpn_rpn_roi_probs, fpn_rpn_roi_indecies = self.GenerateProposals_modules[lvl - k_min](fpn_rpn_cls_probs, fpn_rpn_bbox_pred, im_info)
                 rois_blobs.append(fpn_rpn_rois)
                 score_blobs.append(fpn_rpn_roi_probs)
+                indecies_blobs.append(fpn_rpn_roi_indecies)
                 return_dict['rpn_rois_fpn' + slvl] = fpn_rpn_rois
                 return_dict['rpn_rois_prob_fpn' + slvl] = fpn_rpn_roi_probs
-
+                return_dict['rpn_rois_fpn_idx' + slvl] = fpn_rpn_roi_indecies
         if cfg.MODEL.FASTER_RCNN:
             # CollectAndDistributeFpnRpnProposals also labels proposals when in training mode
-            blobs_out = self.CollectAndDistributeFpnRpnProposals(rois_blobs + score_blobs, roidb, im_info)
+            blobs_out = self.CollectAndDistributeFpnRpnProposals(rois_blobs + score_blobs + indecies_blobs, roidb, im_info)
             return_dict.update(blobs_out)
 
         return return_dict
