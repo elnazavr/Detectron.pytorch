@@ -2,7 +2,7 @@ MODEL:
   TYPE: generalized_rcnn
   CONV_BODY: FPN.fpn_ResNet50_conv5_body
   FASTER_RCNN: True
-  NUM_CLASSES: 81 #40
+  NUM_CLASSES: 40
 RESNETS:
   IMAGENET_PRETRAINED_WEIGHTS: 'data/pretrained_model/resnet50_caffe.pth'
 NUM_GPUS: 1
