@@ -24,6 +24,7 @@ import utils.resnet_weights_helper as resnet_utils
 import utils.fpn as fpn_utils
 import utils.boxes as box_utils
 logger = logging.getLogger(__name__)
+OBJECTNESS_THRESHOLD = 0.5
 
 
 def get_func(func_name):
@@ -262,28 +263,51 @@ class Generalized_RCNN(nn.Module):
             # TODO: complete the returns for RPN only situation
             pass
 
-
-
         if bbbp and self.training:
             preidcted_classes = np.argmax(cls_score_np, axis=1)
-            preidcted_classes_score = np.max(cls_score_np, axis=1)
+            objective_scores = rpn_ret['objective_scores']
+
+
+
             preidcted_features = box_feat
-            for idx, roi in enumerate(roidb):
-                dataset_idx = roi["dataset_idx"]
-                c_plus = dataset_to_classes[dataset_idx]
-                c_minus = set(C) - set(c_plus)
-                for idx, predicted_class in enumerate(preidcted_classes):
-                    if predicted_class != 0:
-                        if predicted_class in c_minus and preidcted_classes_score[idx] > 0.01:
+            indecies_to_drop = []
+            dataset_idx = roidb[0]["dataset_idx"]
 
+            c_plus = dataset_to_classes[dataset_idx]
+            c_minus = set(C) - set(c_plus)
+            for proposal_idx, proposal_predicted_class in enumerate(preidcted_classes):
+                if proposal_predicted_class != 0:
+                    if proposal_predicted_class in c_minus and objective_scores[proposal_idx] > OBJECTNESS_THRESHOLD:
+                        feature = preidcted_features[proposal_idx]
+                        nn_distance, nn_idx = classes_faiss[dataset_idx].search(np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
+                        if proposal_predicted_class == dataset_idx_to_classes[dataset_idx][nn_idx] \
+                                and nn_distance < median_distance_class[proposal_predicted_class]:
+                            rpn_ret['labels_int32'][proposal_idx] = -1
+                            indecies_to_drop.append(proposal_idx)
 
-                            feature = preidcted_features[idx]
-                            distance, idx = classes_faiss[dataset_idx].search(np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
-                            if predicted_class == dataset_idx_to_classes[dataset_idx][idx] and distance < median_distance_class[predicted_class]:
-                                import ipdb;
-                                ipdb.set_trace()
-                                rpn_ret['labels_int32'][idx] = -1
-
+            if len(indecies_to_drop)>0:
+                indecies_to_drop_cumalitve = rpn_ret["rois_idx_restore_int32"][indecies_to_drop]
+                lens = []
+                levels_to_idx = {}
+                for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
+                    if "rois_fpn" + str(lvl) in rpn_ret.keys():
+                        lens.append(len(rpn_ret["rois_fpn" + str(lvl)]))
+                        levels_to_idx[lvl] = []
+                cumulative_lens = [np.sum(lens[:i + 1]) for i in range(len(lens))]
+                for idx_roi, idx_cum in zip(indecies_to_drop, indecies_to_drop_cumalitve):
+                    for idx_lvl in range(len(cumulative_lens)):
+                        if idx_cum < cumulative_lens[idx_lvl]:
+                            levels_to_idx[cfg.FPN.RPN_MIN_LEVEL + idx_lvl].append(idx_roi)
+                            break;
+                for lvl in levels_to_idx.keys():
+                    _, A, H, W = rpn_ret["rpn_cls_logits_fpn" + str(lvl)].shape
+                    if len(levels_to_idx[lvl]) > 0:
+                        for roi_idx in levels_to_idx[lvl]:
+                            idx = rpn_ret["indecies_anchors"][roi_idx]
+                            if idx != -1:
+                                h, w, a = get_hwa(idx, A, W)
+                                print(lvl, roi_idx, idx, get_hwa(idx, A, W))
+                                rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
                             #distance, idx = classes_faiss[predicted_class].search(
                             #    np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
                             #if predicted_class == dataset_idx_to_classes[dataset_idx][idx] and distance < median_distance_class[predicted_class]:
@@ -510,7 +534,13 @@ def create_db(db):
 
 def find_closest_class_for_background(faiss_db, db,  looked_features, threholds,  k_neighbours=10):
     distance, indecies = faiss_db.search(looked_features, k_neighbours)
-    
 
 
+
+
+def get_hwa(idx, A,W):
+    h = idx // (A*W)
+    w = (idx- h*A*W)//A
+    a = idx - h*A*W - w*A
+    return h,w,a
 
