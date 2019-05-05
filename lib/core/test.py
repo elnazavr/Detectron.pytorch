@@ -161,6 +161,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     scores = [return_dict['cls_score'][i].data.cpu().numpy().squeeze() for i in range(len(return_dict['cls_score']))]
     # In case there is 1 proposal
     scores = [scores[i].reshape([-1, scores[i].shape[-1]]) for i in range(len(scores))]
+    import ipdb; ipdb.set_trace()
 
     if cfg.TEST.BBOX_REG:
         pred_boxes = []
