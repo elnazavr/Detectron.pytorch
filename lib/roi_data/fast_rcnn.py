@@ -190,7 +190,9 @@ def _sample_rois(roidb, im_scale, batch_idx):
         rois=sampled_rois,
         bbox_targets=bbox_targets,
         bbox_inside_weights=bbox_inside_weights,
-        bbox_outside_weights=bbox_outside_weights)
+        bbox_outside_weights=bbox_outside_weights,
+        objective_scores = roidb["objective_scores"][keep_inds],
+        indecies_anchors = roidb["indecies_anchors"][keep_inds])
 
     # Optionally add Mask R-CNN blobs
     if cfg.MODEL.MASK_ON:
@@ -198,7 +200,7 @@ def _sample_rois(roidb, im_scale, batch_idx):
                                                im_scale, batch_idx)
 
     # Optionally add Keypoint R-CNN blobs
-    if cfg.MODEL.KEYPOINTS_ON:
+    if cfg.MODEL.KEYPOINTS_ON:a
         roi_data.keypoint_rcnn.add_keypoint_rcnn_blobs(
             blob_dict, roidb, fg_rois_per_image, fg_inds, im_scale, batch_idx)
 
