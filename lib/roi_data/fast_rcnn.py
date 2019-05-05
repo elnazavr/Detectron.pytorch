@@ -200,7 +200,7 @@ def _sample_rois(roidb, im_scale, batch_idx):
                                                im_scale, batch_idx)
 
     # Optionally add Keypoint R-CNN blobs
-    if cfg.MODEL.KEYPOINTS_ON:a
+    if cfg.MODEL.KEYPOINTS_ON:
         roi_data.keypoint_rcnn.add_keypoint_rcnn_blobs(
             blob_dict, roidb, fg_rois_per_image, fg_inds, im_scale, batch_idx)
 
