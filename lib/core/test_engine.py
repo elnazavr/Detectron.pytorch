@@ -167,8 +167,8 @@ def test_net_on_dataset(
         )
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
-    if only_existed_class:
-        import ipdb; ipdb.set_trace()
+    #if only_existed_class:
+    #    import ipdb; ipdb.set_trace()
     results = task_evaluation.evaluate_all(
         dataset, all_boxes, all_segms, all_keyps, output_dir
     )
