@@ -313,6 +313,8 @@ def test_net(
         det_name = 'detection_range_%s_%s.pkl' % tuple(ind_range)
     else:
         det_name = 'detections.pkl'
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
     det_file = os.path.join(output_dir, det_name)
     save_object(
         dict(
