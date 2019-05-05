@@ -108,7 +108,7 @@ def run_inference(
                     args,
                     dataset_name,
                     proposal_file,
-                    output_dir,
+                    os.path.join(output_dir, dataset_name),
                     multi_gpu=multi_gpu_testing,
                     combined_cats_name_to_id = dict_combined
                 )
