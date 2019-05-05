@@ -108,7 +108,7 @@ def run_inference(
                     args,
                     dataset_name,
                     proposal_file,
-                    output_dir,
+                    os.path.join(output_dir, dataset_name),
                     multi_gpu=multi_gpu_testing,
                     combined_cats_name_to_id = dict_combined
                 )
@@ -167,8 +167,8 @@ def test_net_on_dataset(
         )
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
-    if only_existed_class:
-        import ipdb; ipdb.set_trace()
+    #if only_existed_class:
+    #    import ipdb; ipdb.set_trace()
     results = task_evaluation.evaluate_all(
         dataset, all_boxes, all_segms, all_keyps, output_dir
     )
@@ -243,7 +243,7 @@ def test_net(
     print("Length of roidb", len(roidb))
     model = initialize_model_from_cfg(args, gpu_id=gpu_id)
     num_images = len(roidb)
-    num_classes = sum(cfg.MODEL.NUM_CLASSES) - len(cfg.MODEL.NUM_CLASSES) + 1
+    num_classes = cfg.MODEL.NUM_CLASSES
     all_boxes, all_segms, all_keyps = empty_results(num_classes, num_images)
     timers = defaultdict(Timer)
     for i, entry in enumerate(roidb):
