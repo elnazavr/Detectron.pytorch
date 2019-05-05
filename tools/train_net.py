@@ -275,7 +275,7 @@ def main():
         batch_size=args.batch_size,
         sampler=sampler,
         #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-        collate_fn=collate_minibatch)
+        collate_fn=collate_minibatch2)
 
     assert_and_infer_cfg()
 
