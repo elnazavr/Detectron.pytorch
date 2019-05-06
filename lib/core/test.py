@@ -47,7 +47,7 @@ import utils.image as image_utils
 import utils.keypoints as keypoint_utils
 
 
-def im_detect_all(model, im, box_proposals=None, timers=None):
+def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None):
     """Process the outputs of model for testing
     Args:
       model: the network module
@@ -65,10 +65,10 @@ def im_detect_all(model, im, box_proposals=None, timers=None):
     timers['im_detect_bbox'].tic()
     if cfg.TEST.BBOX_AUG.ENABLED:
         scores, boxes, im_scale, blob_conv = im_detect_bbox_aug(
-            model, im, box_proposals)
+            model, im, box_proposals, roidb)
     else:
         scores, boxes, im_scale, blob_conv = im_detect_bbox(
-            model, im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE, box_proposals)
+            model, im, cfg.TEST.SCALE, cfg.TEST.MAX_SIZE, box_proposals, roidb)
     timers['im_detect_bbox'].toc()
 
 
@@ -77,7 +77,7 @@ def im_detect_all(model, im, box_proposals=None, timers=None):
     # cls_boxes boxes and scores are separated by class and in the format used
     # for evaluating results
     timers['misc_bbox'].tic()
-    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes)
+    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=roidb["dataset_idx"])
     timers['misc_bbox'].toc()
 
     if cfg.MODEL.MASK_ON and boxes.shape[0] > 0:
@@ -125,7 +125,7 @@ def im_conv_body_only(model, im, target_scale, target_max_size):
     return blob_conv, im_scale
 
 
-def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
+def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=None):
     """Prepare the bbox for testing"""
 
     inputs, im_scale = _get_blobs(im, boxes, target_scale, target_max_size)
@@ -149,6 +149,8 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     else:
         inputs['data'] = [torch.from_numpy(inputs['data'])]
         inputs['im_info'] = [torch.from_numpy(inputs['im_info'])]
+        inputs["roidb"] = [blob_utils.serialize(roidb)]
+
 
     return_dict = model(**inputs)
 
@@ -157,63 +159,34 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
         # unscale back to raw image space
         boxes = rois[:, 1:5] / im_scale
 
-    # cls prob (activations after softmax)
-    scores = [return_dict['cls_score'][i].data.cpu().numpy().squeeze() for i in range(len(return_dict['cls_score']))]
-    # In case there is 1 proposal
-    scores = [scores[i].reshape([-1, scores[i].shape[-1]]) for i in range(len(scores))]
-    #scores_values = np.array([np.max(scores[i], axis=1) for i in range(len(scores))])
-    #scores_indecies = np.array([np.argmax(scores[i], axis=1) for i in range(len(scores))])
-    scores_values, scores_indecies = [], []
-    for i in range(len(scores)):
-        scores_values.append(np.max(scores[i], axis=1))
-        scores_indecies.append(np.argmax(scores[i], axis=1))
-    scores_values = np.array(scores_values)
-    scores_indecies = np.array(scores_indecies)
-
-
-    N_heads, N_proposals = scores_indecies.shape
-    scores_values = scores_values.T
-    scores_indecies = scores_indecies.T
-    scores_max_datasets = np.argmax(scores_values, axis=1)
-
-    max_scores = scores_values[0][scores_max_datasets]
-
+    scores = return_dict['cls_score'].data.cpu().numpy().squeeze()
+    scores = scores.reshape([-1, scores.shape[-1]])
     if cfg.TEST.BBOX_REG:
-        pred_boxes = []
-        for i in range(len(return_dict['bbox_pred'])):
-            # Apply bounding-box regression deltas
-            box_deltas = return_dict['bbox_pred'][i].data.cpu().numpy().squeeze()
-            # In case there is 1 proposal
-            box_deltas = box_deltas.reshape([-1, box_deltas.shape[-1]])
-            if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
-                # Remove predictions for bg class (compat with MSRA code)
-                box_deltas = box_deltas[:, -4:]
-            if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
-                # (legacy) Optionally normalize targets by a precomputed mean and stdev
-                box_deltas = box_deltas.view(-1, 4) * cfg.TRAIN.BBOX_NORMALIZE_STDS \
-                             + cfg.TRAIN.BBOX_NORMALIZE_MEANS
-            pred_boxes_one_head = box_utils.bbox_transform(boxes, box_deltas, cfg.MODEL.BBOX_REG_WEIGHTS)
-            pred_boxes_one_head = box_utils.clip_tiled_boxes(pred_boxes_one_head, im.shape)
-            if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
-                pred_boxes_one_head = np.tile(pred_boxes, (1, scores[i].shape[1]))
-            pred_boxes.append(pred_boxes_one_head)
+        # Apply bounding-box regression deltas
+        box_deltas = return_dict['bbox_pred'].data.cpu().numpy().squeeze()
+        # In case there is 1 proposal
+        box_deltas = box_deltas.reshape([-1, box_deltas.shape[-1]])
+        if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
+            # Remove predictions for bg class (compat with MSRA code)
+            box_deltas = box_deltas[:, -4:]
+        if cfg.TRAIN.BBOX_NORMALIZE_TARGETS_PRECOMPUTED:
+            # (legacy) Optionally normalize targets by a precomputed mean and stdev
+            box_deltas = box_deltas.view(-1, 4) * cfg.TRAIN.BBOX_NORMALIZE_STDS \
+                         + cfg.TRAIN.BBOX_NORMALIZE_MEANS
+        pred_boxes = box_utils.bbox_transform(boxes, box_deltas, cfg.MODEL.BBOX_REG_WEIGHTS)
+        pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im.shape)
+        if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
+            pred_boxes = np.tile(pred_boxes, (1, scores.shape[1]))
     else:
         # Simply repeat the boxes, once for each class
         pred_boxes = []
         for i in range(len(scores)):
             pred_boxes.append(np.tile(boxes, (1, scores[i].shape[1])))
-    #import ipdb; ipdb.set_trace()
-
-
     if cfg.DEDUP_BOXES > 0 and not cfg.MODEL.FASTER_RCNN:
         # Map scores and predictions back to the original set of boxes
         scores = scores[inv_index, :]
         pred_boxes = pred_boxes[inv_index, :]
 
-    boxes = []
-    for proposal_idx, classes_idx, dataset_idx in zip(range(N_proposals), scores_indecies, scores_max_datasets):
-        from_idx = 4*classes_idx[dataset_idx]
-        boxes.append(pred_boxes[dataset_idx][proposal_idx][from_idx: from_idx + 4])
     #return scores_values[0][scores_max_datasets], np.array(boxes),
     return scores, pred_boxes, im_scale, return_dict['blob_conv']
 
@@ -749,7 +722,7 @@ def combine_heatmaps_size_dep(hms_ts, ds_ts, us_ts, boxes, heur_f):
     return hms_c
 
 
-def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
+def box_results_with_nms_and_limit(scores, boxes, dataset_idx):  # NOTE: support single-batch
     """Returns bounding-box detection results by thresholding on scores and
     applying non-maximum suppression (NMS).
     `boxes` has shape (#detections, 4 * #classes), where each row represents
@@ -761,43 +734,37 @@ def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
     dataset (including the background class). `scores[i, j]`` corresponds to the
     box at `boxes[i, j * 4:(j + 1) * 4]`.
     """
-    #import  ipdb; ipdb.set_trace()
-
-    num_classes =sum(cfg.MODEL.NUM_CLASSES)-len(cfg.MODEL.NUM_CLASSES)
+    num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
     cls_boxes = [[] for _ in range(num_classes)]
     # Apply threshold on detection probabilities and apply NMS
     # Skip j = 0, because it's the background class
-    count = 0
-    #import ipdb; ipdb.set_trace()
-    for i in range(len(scores)):
-        for j in range(1, cfg.MODEL.NUM_CLASSES[i]):
-            inds = np.where(scores[i][:, j] > cfg.TEST.SCORE_THRESH)[0]
-            scores_j = scores[i][inds, j]
-            boxes_j = boxes[i][inds, j * 4:(j + 1) * 4]
-            dets_j = np.hstack((boxes_j, scores_j[:, np.newaxis])).astype(np.float32, copy=False)
-            if cfg.TEST.SOFT_NMS.ENABLED:
-                nms_dets, _ = box_utils.soft_nms(
-                    dets_j,
-                    sigma=cfg.TEST.SOFT_NMS.SIGMA,
-                    overlap_thresh=cfg.TEST.NMS,
-                    score_thresh=0.0001,
-                    method=cfg.TEST.SOFT_NMS.METHOD
-                )
-            else:
-                keep = box_utils.nms(dets_j, cfg.TEST.NMS)
-                nms_dets = dets_j[keep, :]
-            # Refine the post-NMS boxes using bounding-box voting
-            if cfg.TEST.BBOX_VOTE.ENABLED:
-                nms_dets = box_utils.box_voting(
-                    nms_dets,
-                    dets_j,
-                    cfg.TEST.BBOX_VOTE.VOTE_TH,
-                    scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
-                )
-            cls_boxes[count] = nms_dets
-            count+=1
+    for j in range(1, num_classes):
+        inds = np.where(scores[:, j] > cfg.TEST.SCORE_THRESH)[0]
+        scores_j = scores[inds, j]
+        boxes_j = boxes[inds, j * 4:(j + 1) * 4]
+        dets_j = np.hstack((boxes_j, scores_j[:, np.newaxis])).astype(np.float32, copy=False)
+        if cfg.TEST.SOFT_NMS.ENABLED:
+            nms_dets, _ = box_utils.soft_nms(
+                dets_j,
+                sigma=cfg.TEST.SOFT_NMS.SIGMA,
+                overlap_thresh=cfg.TEST.NMS,
+                score_thresh=0.0001,
+                method=cfg.TEST.SOFT_NMS.METHOD
+            )
+        else:
+            keep = box_utils.nms(dets_j, cfg.TEST.NMS)
+            nms_dets = dets_j[keep, :]
+        # Refine the post-NMS boxes using bounding-box voting
+        if cfg.TEST.BBOX_VOTE.ENABLED:
+            nms_dets = box_utils.box_voting(
+                nms_dets,
+                dets_j,
+                cfg.TEST.BBOX_VOTE.VOTE_TH,
+                scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
+            )
+        cls_boxes[j] = nms_dets
+
     # Limit to max_per_image detections **over all classes**
-    #import ipdb; ipdb.set_trace()
     if cfg.TEST.DETECTIONS_PER_IM > 0:
         image_scores = np.hstack(
             [cls_boxes[j][:, -1] for j in range(1, num_classes)]
@@ -807,8 +774,8 @@ def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
             for j in range(1, num_classes):
                 keep = np.where(cls_boxes[j][:, -1] >= image_thresh)[0]
                 cls_boxes[j] = cls_boxes[j][keep, :]
+
     im_results = np.vstack([cls_boxes[j] for j in range(1, num_classes)])
-    #import ipdb;ipdb.set_trace()
     boxes = im_results[:, :-1]
     scores = im_results[:, -1]
     return scores, boxes, cls_boxes
