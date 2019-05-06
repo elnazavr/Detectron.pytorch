@@ -2,7 +2,7 @@ MODEL:
   TYPE: generalized_rcnn
   CONV_BODY: FPN.fpn_ResNet50_conv5_body
   FASTER_RCNN: True
-  NUM_CLASSES: 41
+  NUM_CLASSES: 81 #41
 RESNETS:
   IMAGENET_PRETRAINED_WEIGHTS: 'data/pretrained_model/resnet50_caffe.pth'
 NUM_GPUS: 1
@@ -26,13 +26,14 @@ TRAIN:
   SCALES: (800,)
   MAX_SIZE: 1333
   BATCH_SIZE_PER_IM: 512
-  RPN_PRE_NMS_TOP_N: 2000  # Per FPN level
-  DATASETS: ('coco2017_part0_intresected',)
+  RPN_PRE_NMS_TOP_N: 2000  # Per FPN level# Per FPN level
+  IMS_PER_BATCH: 1
+  DATASETS: ('coco2017_part0_intresected', 'coco2017_part1_intresected', 'coco2017_part2_intresected')
 TEST:
   SCALE: 800
   MAX_SIZE: 1333
   NMS: 0.5
   RPN_PRE_NMS_TOP_N: 1000  # Per FPN level
   RPN_POST_NMS_TOP_N: 1000
-  DATASETS: ('coco2017_part0_val_intersected',)
-OUTPUT_DIR: "data/outputs/coco_parts_intersected/0/faster-rcnn/r-50-fpn-2x_6epochs/"
+  DATASETS: ('coco2017_part0_val_intersected', 'coco2017_part1_val_intersected','coco2017_part2_val_intersected')
+OUTPUT_DIR: "data/outputs/coco_parts/123_81_2x/faster-rcnn/r-50-fpn-2x/"
