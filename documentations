@@ -1,0 +1,5 @@
+export PATH="/local/temporary/babayeva/miniconda3/bin:$PATH"
+
+conda install cython matplotlib numpy scipy opencv pyyaml packaging
+conda install -c pytorch pytorch 
+conda install -c pytorch torchvision 
