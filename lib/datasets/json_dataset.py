@@ -147,6 +147,7 @@ class JsonDataset(object):
             roidb = copy.deepcopy(self.COCO.loadImgs(image_ids))
         for entry in roidb:
             self._prep_roidb_entry(entry)
+
         if gt:
             # Include ground-truth object annotations
             cache_filepath = os.path.join(self.cache_path, self.name+'_gt_roidb.pkl')
@@ -237,7 +238,7 @@ class JsonDataset(object):
         for k in ['date_captured', 'url', 'license', 'file_name']:
             if k in entry:
                 del entry[k]
-        entry['dataset_idx'] = np.empty((0), dtype=np.int32)
+        entry['dataset_idx'] = self.dataset_idx
 
 
     def _add_gt_annotations(self, entry):
