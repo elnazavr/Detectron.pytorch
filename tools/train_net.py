@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="1,2"
+os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
 
 import numpy as np
 import yaml
@@ -272,7 +272,7 @@ def main():
     )
     dataloader_groundtruth = torch.utils.data.DataLoader(
         dataset_groundtruth,
-        batch_size=args.batch_size,
+        batch_size=2,
         sampler=sampler,
         #num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch2)
@@ -394,6 +394,7 @@ def main():
                 #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
                 median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
                 print("Median distance class", median_distance_class)
+            maskRCNN.training = True
 
             # adjust learning rate
             if args.lr_decay_epochs and args.epoch == args.lr_decay_epochs[0] and args.start_iter == 0:
@@ -490,6 +491,7 @@ def main():
 def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir ):
     k = 0
     images = []
+    maskRCNN.training = False
     for val_data in zip(dataloader_groundtruth):
         output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
         print("Iteration", k)
