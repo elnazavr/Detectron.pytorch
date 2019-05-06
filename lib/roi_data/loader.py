@@ -252,7 +252,7 @@ def collate_minibatch2(list_of_blobs):
     A batch contains NUM_GPUS minibatches and image size in different minibatch may be different.
     Hence, we need to stack smaples from each minibatch seperately.
     """
-    batch_size = 10
+    batch_size = 2
     Batch = {key: [] for key in list_of_blobs[0]}
     # Because roidb consists of entries of variable length, it can't be batch into a tensor.
     # So we keep roidb in the type of "list of ndarray".
