@@ -151,6 +151,8 @@ class Generalized_RCNN(nn.Module):
         im_data = data
         if self.training:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
+        else:
+            roidb = blob_utils.deserialize(roidb)
 
         device_id = im_data.get_device()
 
@@ -201,7 +203,7 @@ class Generalized_RCNN(nn.Module):
             if self.training:
                 idx = roidb[0]["dataset_idx"]
             else:
-                idx = -1
+                idx = roidb["dataset_idx"]
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
             if self.training:
 
