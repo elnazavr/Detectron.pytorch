@@ -161,7 +161,22 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
     scores = [return_dict['cls_score'][i].data.cpu().numpy().squeeze() for i in range(len(return_dict['cls_score']))]
     # In case there is 1 proposal
     scores = [scores[i].reshape([-1, scores[i].shape[-1]]) for i in range(len(scores))]
-    import ipdb; ipdb.set_trace()
+    #scores_values = np.array([np.max(scores[i], axis=1) for i in range(len(scores))])
+    #scores_indecies = np.array([np.argmax(scores[i], axis=1) for i in range(len(scores))])
+    scores_values, scores_indecies = [], []
+    for i in range(len(scores)):
+        scores_values.append(np.max(scores[i], axis=1))
+        scores_indecies.append(np.argmax(scores[i], axis=1))
+    scores_values = np.array(scores_values)
+    scores_indecies = np.array(scores_indecies)
+
+
+    N_heads, N_proposals = scores_indecies.shape
+    scores_values = scores_values.T
+    scores_indecies = scores_indecies.T
+    scores_max_datasets = np.argmax(scores_values, axis=1)
+
+    max_scores = scores_values[0][scores_max_datasets]
 
     if cfg.TEST.BBOX_REG:
         pred_boxes = []
@@ -187,14 +202,20 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None):
         pred_boxes = []
         for i in range(len(scores)):
             pred_boxes.append(np.tile(boxes, (1, scores[i].shape[1])))
+    #import ipdb; ipdb.set_trace()
+
 
     if cfg.DEDUP_BOXES > 0 and not cfg.MODEL.FASTER_RCNN:
         # Map scores and predictions back to the original set of boxes
         scores = scores[inv_index, :]
         pred_boxes = pred_boxes[inv_index, :]
 
+    boxes = []
+    for proposal_idx, classes_idx, dataset_idx in zip(range(N_proposals), scores_indecies, scores_max_datasets):
+        from_idx = 4*classes_idx[dataset_idx]
+        boxes.append(pred_boxes[dataset_idx][proposal_idx][from_idx: from_idx + 4])
+    #return scores_values[0][scores_max_datasets], np.array(boxes),
     return scores, pred_boxes, im_scale, return_dict['blob_conv']
-
 
 def im_detect_bbox_aug(model, im, box_proposals=None):
     """Performs bbox detection with test-time augmentations.
@@ -740,11 +761,14 @@ def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
     dataset (including the background class). `scores[i, j]`` corresponds to the
     box at `boxes[i, j * 4:(j + 1) * 4]`.
     """
+    #import  ipdb; ipdb.set_trace()
+
     num_classes =sum(cfg.MODEL.NUM_CLASSES)-len(cfg.MODEL.NUM_CLASSES)
     cls_boxes = [[] for _ in range(num_classes)]
     # Apply threshold on detection probabilities and apply NMS
     # Skip j = 0, because it's the background class
     count = 0
+    #import ipdb; ipdb.set_trace()
     for i in range(len(scores)):
         for j in range(1, cfg.MODEL.NUM_CLASSES[i]):
             inds = np.where(scores[i][:, j] > cfg.TEST.SCORE_THRESH)[0]
@@ -773,6 +797,7 @@ def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
             cls_boxes[count] = nms_dets
             count+=1
     # Limit to max_per_image detections **over all classes**
+    #import ipdb; ipdb.set_trace()
     if cfg.TEST.DETECTIONS_PER_IM > 0:
         image_scores = np.hstack(
             [cls_boxes[j][:, -1] for j in range(1, num_classes)]
@@ -783,6 +808,7 @@ def box_results_with_nms_and_limit(scores, boxes):  # NOTE: support single-batch
                 keep = np.where(cls_boxes[j][:, -1] >= image_thresh)[0]
                 cls_boxes[j] = cls_boxes[j][keep, :]
     im_results = np.vstack([cls_boxes[j] for j in range(1, num_classes)])
+    #import ipdb;ipdb.set_trace()
     boxes = im_results[:, :-1]
     scores = im_results[:, -1]
     return scores, boxes, cls_boxes
