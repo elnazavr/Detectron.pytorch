@@ -4,3 +4,4 @@ conda install cython matplotlib numpy scipy opencv pyyaml packaging yaml
 conda install -c pytorch pytorch 
 conda install -c pytorch torchvision 
 conda install -c hcc pycocotools 
+conda install faiss-gpu cudatoolkit=9.0 -c pytorch
