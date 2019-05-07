@@ -166,10 +166,10 @@ class JsonDataset(object):
                     '_add_gt_annotations took {:.3f}s'.
                     format(self.debug_timer.toc(average=False))
                 )
-                if not cfg.DEBUG:
-                    with open(cache_filepath, 'wb') as fp:
-                        pickle.dump(roidb, fp, pickle.HIGHEST_PROTOCOL)
-                    logger.info('Cache ground truth roidb to %s', cache_filepath)
+                # if not cfg.DEBUG:
+                #     with open(cache_filepath, 'wb') as fp:
+                #         pickle.dump(roidb, fp, pickle.HIGHEST_PROTOCOL)
+                #     logger.info('Cache ground truth roidb to %s', cache_filepath)
             if feature_db is not None:
                 for idx, roi in enumerate(roidb):
                     image_id = int(os.path.splitext(os.path.basename(roi["image"]))[0])

@@ -226,9 +226,6 @@ class Generalized_RCNN(nn.Module):
 
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
                 return_dict["ground_truth"][i]["features"] = box_feat
-                return_dict["ground_truth"][i]["bbox"] = roidb[i]["boxes"]
-                return_dict["ground_truth"][i]["classes"] = roidb[i]["gt_classes"]
-                return_dict["ground_truth"][i]["image"] = int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])
             return return_dict
 
 
