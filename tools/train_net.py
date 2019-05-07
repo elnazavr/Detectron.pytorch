@@ -372,6 +372,7 @@ def main():
 
     print("Total number of epochs: ", number_epochs)
     objective_k_threholds = {}
+    objective_k_threholds =  list(map(Variable, objective_k_threholds))
 
     try:
         logger.info('Training starts !')
@@ -391,7 +392,7 @@ def main():
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
-                input_data["objective_k_threholds"] =[objective_k_threholds]
+                input_data["objective_k_threholds"] = list(map(Variable, objective_k_threholds))
                 net_outputs = maskRCNN(**input_data)
                 objective_k_threholds = net_outputs["objective_k_threholds"]
 
