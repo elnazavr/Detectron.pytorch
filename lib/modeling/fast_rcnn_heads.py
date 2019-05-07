@@ -17,7 +17,6 @@ CLASS_THRESHOLD = 0.1;
 class fast_rcnn_outputs(nn.Module):
     def __init__(self, dim_in):
         super().__init__()
-        print(type(cfg.MODEL.NUM_CLASSES))
         if type(cfg.MODEL.NUM_CLASSES) is not list:
             cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
         self.cls_score, self.bbox_pred = {}, {}
@@ -50,8 +49,6 @@ class fast_rcnn_outputs(nn.Module):
     def forward(self, x, idx=-1, rpn_ret=None, objective_k_threholds = {}):
         indecies_to_drop = []
         head_idx = idx
-        print(x.shape)
-
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
         if self.training:
@@ -71,7 +68,8 @@ class fast_rcnn_outputs(nn.Module):
                     if label not in  objective_k_threholds.keys():
                         objective_k_threholds[label] = []
                     objective_k_threholds[label].append(label_score)
-                    print("THRESHOLD: ", [(key,len(value)) for key,value in objective_k_threholds.items()])
+                    if len(objective_k_threholds)>50:
+                        objective_k_threholds = objective_k_threholds[-50:]
 
             background_idx = np.where(chosen_classes==0)[0]
 
