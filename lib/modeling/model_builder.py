@@ -246,7 +246,6 @@ class Generalized_RCNN(nn.Module):
                         idx = rpn_ret["indecies_anchors"][roi_idx]
                         if idx!=-1:
                             h, w, a = get_hwa(idx, A, W)
-                            print(lvl, roi_idx, idx, get_hwa(idx, A, W))
                             rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
             rpn_kwargs.update(rpn_ret)
 
