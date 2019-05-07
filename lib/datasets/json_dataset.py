@@ -472,7 +472,7 @@ def add_proposals(roidb, rois, scales, crowd_thresh, scores = None, anchors_idx=
 def _merge_proposal_boxes_into_roidb(roidb, box_list, scores_list=None, anchors_idx=None):
     """Add proposal boxes to each roidb entry."""
     assert len(box_list) == len(roidb)
-    if len(roidb)!=1:
+    if len(roidb)!=1 and len(cfg.TRAIN.DATASETS)>1:
         import sys
         sys.exit("DO NOT SUPPORT >1 roidb")
     for i, entry in enumerate(roidb):

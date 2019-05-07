@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
+#os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
 
 import numpy as np
 import yaml
@@ -179,7 +179,8 @@ def main():
     original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
     if args.batch_size is None:
         args.batch_size = original_batch_size
-    cfg.NUM_GPUS = torch.cuda.device_count() - 1
+    if args.bbbp:
+        cfg.NUM_GPUS = torch.cuda.device_count() - 1
     assert (args.batch_size % cfg.NUM_GPUS) == 0, \
         'batch_size: %d, NUM_GPUS: %d' % (args.batch_size, cfg.NUM_GPUS)
     cfg.TRAIN.IMS_PER_BATCH = args.batch_size // cfg.NUM_GPUS
@@ -250,6 +251,8 @@ def main():
 
 
     sampler = MinibatchSampler(ratio_list, ratio_index)
+    if len(cfg.TRAIN.DATASETS)>1:
+        args.batch_size = 1
 
     dataset = RoiDataLoader(
         roidb,
@@ -264,18 +267,18 @@ def main():
         #num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
 
-
-    dataset_groundtruth = RoiDataLoader(
-        roidb= roidb,
-        num_classes=cfg.MODEL.NUM_CLASSES,
-        training=False
-    )
-    dataloader_groundtruth = torch.utils.data.DataLoader(
-        dataset_groundtruth,
-        batch_size=2,
-        sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-        collate_fn=collate_minibatch2)
+    if args.bbbp:
+        dataset_groundtruth = RoiDataLoader(
+            roidb= roidb,
+            num_classes=cfg.MODEL.NUM_CLASSES,
+            training=False
+        )
+        dataloader_groundtruth = torch.utils.data.DataLoader(
+            dataset_groundtruth,
+            batch_size=2,
+            sampler=sampler,
+            #num_workers=cfg.DATA_LOADER.NUM_THREADS,
+            collate_fn=collate_minibatch2)
 
     assert_and_infer_cfg()
 
@@ -408,11 +411,12 @@ def main():
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
                 input_data['bbbp'] = [args.bbbp]
-                input_data['classes_faiss'] = [classes_faiss]
-                input_data['dataset_to_classes'] = [dataset_to_classes]
-                input_data['dataset_idx_to_classes'] = [dataset_idx_to_classes]
-                input_data['median_distance_class'] = [median_distance_class]
-                input_data['C'] = [list(C)]
+                if args.bbbp:
+                    input_data['classes_faiss'] = [classes_faiss]
+                    input_data['dataset_to_classes'] = [dataset_to_classes]
+                    input_data['dataset_idx_to_classes'] = [dataset_idx_to_classes]
+                    input_data['median_distance_class'] = [median_distance_class]
+                    input_data['C'] = [list(C)]
                 net_outputs = maskRCNN(**input_data)
 
                 # preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
