@@ -397,9 +397,8 @@ def main():
 
                 preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
                 roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
-                print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],
-                      [roi["gt_classes"] for roi in roidb_batch])
+                #print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
+                #print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],[roi["gt_classes"] for roi in roidb_batch])
 
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
@@ -407,8 +406,11 @@ def main():
                 loss.backward()
                 optimizer.step()
                 training_stats.IterToc()
-                print("Finishing training part")
+                #print("Finishing training part")
                 images = []
+
+                if (args.step%100==0):
+                    print("Finishing training part", args.step, len(dataloader))
 
 
 
