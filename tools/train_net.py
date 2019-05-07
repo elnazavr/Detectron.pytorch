@@ -392,11 +392,11 @@ def main():
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
             # ---- Start of epoch ----
             if args.bbbp:
-                feature_db
                 feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
+
                 classes_faiss, dataset_idx_to_classes = create_dbs_for_datasets(feature_db, classes_faiss)
                 #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
-                median_distance_class = find_threhold_for_each_class(feature_db[:, 7:], feature_db[:, 2], k_neighbours=5)
+                median_distance_class = find_threhold_for_each_class(classes_faiss, feature_db, k_neighbours=5)
                 print("Median distance class", median_distance_class)
             maskRCNN.training = True
 
@@ -492,78 +492,102 @@ def main():
     finally:
         if args.use_tfboard and not args.no_save:
             tblogger.close()
-
+import time
 def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir):
-    k = 0
+    k = 2
     images = []
     maskRCNN.training = False
-    output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
-    import ipdb; ipdb.set_trace()
-    if os.path.exists(output_path):
-        feature_db = np.load(output_path+".npy")
-        return feature_db
-
+    output_path = os.path.join(output_dir,"feature_db_train" + str(args.step))
+    start_time, end_time = time.time(), time.time()
+    fucked_up_indecies = []
+    print("Begin working with database")
     for val_data in zip(dataloader_groundtruth):
-        print("Iteration", k)
+
+        start_time = time.time()
+
+
         val_data = val_data[0]
         for key in val_data:
             if key != 'roidb':  # roidb is a list of ndarrays with inconsistent length
                 val_data[key] = list(map(Variable, val_data[key]))
 
         val_data["only_bbox"] = [True]
-        val_data["image_to_idx"] = [image_to_idx]
+        before_maskRCNN_time = time.time()
+        print("befor  Mask Rcnn", k, "time", before_maskRCNN_time - start_time)
         net_val_outputs = maskRCNN(**val_data)
+        after_mask_rcnn = time.time()
+        print("after mask Rcnn", k, "time", after_mask_rcnn - before_maskRCNN_time)
+
         ground_truth_outputs = net_val_outputs['ground_truth']
+        roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
         for i in ground_truth_outputs.keys():
-            image_idx = ground_truth_outputs[i]["image"][0].item()
+            image_idx = int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])
             if image_idx in images:
+                print("Again the image")
                 continue
             images.append(image_idx)
-            bboxes_gt = ground_truth_outputs[i]["bbox"].numpy()
-            N_instances = len(bboxes_gt)
             features_gt = ground_truth_outputs[i]["features"].data.cpu().numpy().astype("float32")
-            classes = ground_truth_outputs[i]["classes"].numpy()
+            bboxes_gt = roidb[i]["boxes"]
+            N_instances = len(features_gt)
+            classes = roidb[i]["gt_classes"]
             classes = [[cl] for cl in classes]
             db_idx = image_to_idx[image_idx]
+            if feature_db[db_idx,1] == roidb[i]['dataset_idx']:
+                feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt, features_gt], axis=1)
+            else:
+                print(db_idx)
+                fucked_up_indecies.append(db_idx)
 
-            feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt, features_gt], axis=1)
+        end_time = time.time()
+
+        print("Postprocessing", k, "time", end_time - after_mask_rcnn)
+
+
         k += len(ground_truth_outputs)
         if k % 500 == 0:
             print("Dumping it to pickle file ", output_path)
-            np.save(output_path, feature_db)
+            #np.save(output_path, feature_db)
     print("Dumping it to pickle file ", output_path)
     np.save(output_path, feature_db)
     with open(output_path + ".pkl", "wb") as f:
         pickle.dump(feature_db, f)
+
+    with open(output_path + "_fucked_up_indecies.txt", "wb") as f:
+        pickle.dump(fucked_up_indecies, f)
     print("Done working with database")
     return feature_db
 
 
-def find_threhold_for_each_class(db, classes, k_neighbours=10):
+def find_threhold_for_each_class(faiss_dbs, db, k_neighbours=10):
     print("Creating database")
-    faiss_db = create_faiss()
-    faiss_db.add(np.ascontiguousarray(db))
-
-    print("Doing search")
-    distance, indecies = faiss_db.search(np.ascontiguousarray(db), k_neighbours)
-    print("Finishing search")
-    classes_idx = classes[indecies]
+    #faiss_db = create_faiss()
+    #faiss_db.add(np.ascontiguousarray(db))
     distance_class = {}
     counts = {}
-    for idx, neighbours in enumerate(classes_idx):
-        myself = int(classes[idx])
-        not_class_neighbours = np.where(neighbours != myself)[0]
-        if len(not_class_neighbours) == 0:
-            not_class_neighbours = [k_neighbours - 1]
-        first_not_class_neighbours = not_class_neighbours[0]
-        # if first_not_class_neighbours==0:
-        #    import ipdb; ipdb.set_trace()
-        if myself not in counts.keys():
-            counts[myself] = []
-            distance_class[myself] = []
-        counts[myself].append(first_not_class_neighbours)
-        distance_class[myself].append(distance[idx, first_not_class_neighbours])
+    for dataset_id, faiss_db in faiss_dbs.items():
+        indecies = np.where(db[:,1]!=dataset_id)[0]
+        features = db[indecies, 7: ]
+        classes = db[indecies, 2]
+        print("Doing search")
 
+
+        distance, indecies = faiss_db.search(np.ascontiguousarray(features), k_neighbours)
+        print("Finishing search")
+        classes_idx = classes[indecies]
+        for idx, neighbours in enumerate(classes_idx):
+            myself = int(classes[idx])
+            not_class_neighbours = np.where(neighbours != myself)[0]
+            if len(not_class_neighbours) == 0:
+                not_class_neighbours = [k_neighbours - 1]
+            first_not_class_neighbours = not_class_neighbours[0]
+            # if first_not_class_neighbours==0:
+            #    import ipdb; ipdb.set_trace()
+            if myself not in counts.keys():
+                counts[myself] = []
+                distance_class[myself] = []
+            counts[myself].append(first_not_class_neighbours)
+            distance_class[myself].append(distance[idx, first_not_class_neighbours])
+    import ipdb; ipdb.set_trace()
     median_distance_class = {}
     for class_idx in distance_class.keys():
         median_distance_class[class_idx] = np.median(distance_class[class_idx])
@@ -628,6 +652,7 @@ def create_dbs_for_datasets(feature_db, classes_faiss=None):
             print("After reset", classes_faiss[dataset_id].ntotal)
             classes_faiss[dataset_id].add(features)
             print("After add", classes_faiss[dataset_id].ntotal)
+        print("First dataset is done with: ", len(features))
 
     return classes_faiss, dataset_idx_to_classes
 
