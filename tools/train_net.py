@@ -392,6 +392,7 @@ def main():
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
             # ---- Start of epoch ----
             if args.bbbp:
+                feature_db
                 feature_db = update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir)
                 classes_faiss, dataset_idx_to_classes = create_dbs_for_datasets(feature_db, classes_faiss)
                 #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
@@ -492,12 +493,17 @@ def main():
         if args.use_tfboard and not args.no_save:
             tblogger.close()
 
-def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir ):
+def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, output_dir):
     k = 0
     images = []
     maskRCNN.training = False
+    output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
+    import ipdb; ipdb.set_trace()
+    if os.path.exists(output_path):
+        feature_db = np.load(output_path+".npy")
+        return feature_db
+
     for val_data in zip(dataloader_groundtruth):
-        output_path = os.path.join(output_dir, "feature_db_train" + str(args.step))
         print("Iteration", k)
         val_data = val_data[0]
         for key in val_data:
