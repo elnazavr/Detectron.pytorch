@@ -587,7 +587,7 @@ def find_threhold_for_each_class(faiss_dbs, db, k_neighbours=10):
                 distance_class[myself] = []
             counts[myself].append(first_not_class_neighbours)
             distance_class[myself].append(distance[idx, first_not_class_neighbours])
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     median_distance_class = {}
     for class_idx in distance_class.keys():
         median_distance_class[class_idx] = np.median(distance_class[class_idx])
