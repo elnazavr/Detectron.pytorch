@@ -225,7 +225,7 @@ def main():
     dim: 1, 1, 1, 4, 1024 = 1031
     """
     ground_truth_roidb =[]
-    roidb, ratio_list, ratio_index, feature_db, dataset_to_classes = combined_roidb_for_training(
+    roidb, ratio_list, ratio_index, feature_db, dataset_to_classes, ds_classes = combined_roidb_for_training(
         cfg.TRAIN.DATASETS, cfg.TRAIN.PROPOSAL_FILES, feature_db=feature_db,
         ground_truth_roidb = ground_truth_roidb, image_to_idx = image_to_idx)
     #np.save(os.path.join(output_dir, "roidb_initial" + ".pkl"), roidb)
@@ -371,8 +371,12 @@ def main():
 
 
     print("Total number of epochs: ", number_epochs)
-    objective_k_threholds = {}
-    objective_k_threholds =  list(map(Variable, objective_k_threholds))
+    max_class = np.max(ds_classes.flatten())
+    ds_classes = ds_classes.astype(int)
+    ds_classes = torch.from_numpy(ds_classes)
+    objective_k_threholds = np.zeros((int(max_class)+1, 50))
+    objective_k_threholds = torch.from_numpy(objective_k_threholds)
+    #objective_k_threholds =  list(map(Variable, objective_k_threholds))
 
     try:
         logger.info('Training starts !')
@@ -392,12 +396,13 @@ def main():
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
                 input_data['only_bbox'] = [False]
-                input_data["objective_k_threholds"] = list(map(Variable, objective_k_threholds))
+                input_data["objective_k_threholds"] = [objective_k_threholds]
+                input_data["ds_classes"] = [ds_classes]
                 net_outputs = maskRCNN(**input_data)
                 objective_k_threholds = net_outputs["objective_k_threholds"]
 
-                preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
-                roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                #preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
+                #roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
                 #print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
                 #print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],[roi["gt_classes"] for roi in roidb_batch])
 

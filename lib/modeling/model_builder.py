@@ -147,7 +147,7 @@ class Generalized_RCNN(nn.Module):
                 return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
 
 
-    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, objective_k_threholds=None,**rpn_kwargs):
+    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, objective_k_threholds=None, ds_classes=None, **rpn_kwargs):
         im_data = data
         if self.training:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
@@ -201,7 +201,7 @@ class Generalized_RCNN(nn.Module):
                 idx = roidb[0]["dataset_idx"]
             else:
                 idx = -1
-            cls_score, bbox_pred, indecies_to_drop, objective_k_threholds = self.Box_Outs(box_feat, idx, rpn_ret, objective_k_threholds)
+            cls_score, bbox_pred, indecies_to_drop, objective_k_threholds = self.Box_Outs(box_feat, idx, rpn_ret, objective_k_threholds, ds_classes)
 
             return_dict["objective_k_threholds"] = objective_k_threholds
             if self.training:
