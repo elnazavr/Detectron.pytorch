@@ -14,7 +14,7 @@ from collections import defaultdict
 #os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
 
 import numpy as np
-import yaml
+import yaml, time
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -405,6 +405,7 @@ def main():
                 args.lr_decay_epochs.pop(0)
                 net_utils.decay_learning_rate(optimizer, lr, cfg.SOLVER.GAMMA)
                 lr *= cfg.SOLVER.GAMMA
+            start_time = time.time()
             for args.step, input_data in zip(range(args.start_iter, iters_per_epoch), dataloader):
                 for key in input_data:
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
@@ -420,47 +421,20 @@ def main():
                     input_data['C'] = [list(C)]
                 net_outputs = maskRCNN(**input_data)
 
-                # preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy()
-                # preidcted_classes_score = net_outputs["faiss_db"]["class_score"].detach().cpu().numpy()
-                # roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                # print("Image" , [(os.path.basename(roi["image"]),  roi["dataset_idx"]) for roi in roidb_batch])
-                # print(len(preidcted_classes), [cl for cl in preidcted_classes if cl!=0], [roi["gt_classes"] for roi in roidb_batch])
-                # preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                # if args.bbbp:
-                #     for idx, roi in enumerate(roidb_batch):
-                #         dataset_idx = roi["dataset_idx"]
-                #         c_plus = dataset_to_classes[dataset_idx]
-                #         c_minus = set(C) - set(c_plus)
-                #         drop_loss = np.ones(shape=preidcted_classes.shape)
-                #         for idx, predicted_class in enumerate(preidcted_classes):
-                #             if predicted_class!=0:
-                #                 if predicted_class in c_minus and preidcted_classes_score[idx]>0.01:
-                #
-                #                     import ipdb;
-                #                     ipdb.set_trace()
-                #                     feature = preidcted_features[idx]
-                #                     distance, idx = classes_faiss[dataset_idx].search(np.array([feature]), 1)
-                #                     if idx[0]==dataset_idx_to_classes[predicted_class] and  distance < median_distance_class[predicted_class]:
-                #                         drop_loss[idx] = 0
-
-
-                    #detect dataset
-                    #detect if the predicted clas is not from the dataset
-                    #detect probabability of being the object
-
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 training_stats.IterToc()
-                print("Finishing training part")
                 images = []
 
                 if (args.step+1) % ckpt_interval_per_epoch == 0:
                     net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
 
                 if args.step % args.disp_interval == 0 and args.step!=0 :
+                    end_time = time.time()
+                    print("Finished 100", end_time-start_time)
                     log_training_stats(training_stats, global_step, lr)
 
 
