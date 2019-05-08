@@ -17,6 +17,7 @@ from collections import defaultdict
 import numpy as np
 import yaml
 import torch
+import time
 from torch.autograd import Variable
 import torch.nn as nn
 import cv2
@@ -390,7 +391,9 @@ def main():
                 args.lr_decay_epochs.pop(0)
                 net_utils.decay_learning_rate(optimizer, lr, cfg.SOLVER.GAMMA)
                 lr *= cfg.SOLVER.GAMMA
+            start_time = time.time()
             for args.step, input_data in zip(range(args.start_iter, iters_per_epoch), dataloader):
+
                 for key in input_data:
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
@@ -413,10 +416,6 @@ def main():
                 optimizer.step()
                 training_stats.IterToc()
                 #print("Finishing training part")
-                images = []
-
-                if (args.step%100==0):
-                    print("Finishing training part", args.step, len(dataloader))
 
 
 
@@ -424,6 +423,9 @@ def main():
                     net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
 
                 if args.step % args.disp_interval == 0:
+                    end_time = time.time()
+                    print("Finishing training part", end_time-start_time)
+                    start_time = end_time
                     log_training_stats(training_stats, global_step, lr)
 
 
