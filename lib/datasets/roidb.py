@@ -43,6 +43,8 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     def get_roidb(dataset_name, proposal_file, last_row_idx, dataset_idx=0, dataset_to_classes={}):
         ds = JsonDataset(dataset_name, dataset_idx)
         #change_ids(ds, combined_cats_name_to_id)
+        for key, value in ds.json_category_id_to_contiguous_id.items():
+            ds_classes[dataset_idx, value] = key
 
         print(last_row_idx)
         roidb, last_row_idx, dataset_to_classes = ds.get_roidb(
@@ -75,6 +77,7 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     dataset_idx = 0
     dataset_to_classes ={}
     dict_combined = define_all_classes(dataset_names)
+    ds_classes = np.zeros((len(cfg.MODEL.NUM_CLASSES), np.max(cfg.MODEL.NUM_CLASSES)))
     #if (len(dict_combined[dict_combined.keys()[0]]))+1!=cfg.MODEL.NUM_CLASSES:
     #    print("Number of classes %d, number of predicted in model %d"%(len(dict_combined[dict_combined.keys()[0]])+1, cfg.MODEL.NUM_CLASSES))
     #    sys.exit(1)
@@ -103,8 +106,7 @@ def combined_roidb_for_training(dataset_names, proposal_files, feature_db =None,
     logger.info('done')
 
     _compute_and_log_stats(roidb)
-
-    return roidb, ratio_list, ratio_index, feature_db, dataset_to_classes
+    return roidb, ratio_list, ratio_index, feature_db, dataset_to_classes, ds_classes
 
 
 def extend_with_flipped_entries(roidb, dataset, la):
