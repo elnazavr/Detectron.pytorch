@@ -47,7 +47,7 @@ import utils.image as image_utils
 import utils.keypoints as keypoint_utils
 
 
-def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None):
+def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None, combined_cats_name_to_id = {}):
     """Process the outputs of model for testing
     Args:
       model: the network module
@@ -77,7 +77,7 @@ def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None):
     # cls_boxes boxes and scores are separated by class and in the format used
     # for evaluating results
     timers['misc_bbox'].tic()
-    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=roidb["dataset_idx"])
+    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=roidb["dataset_idx"], combined_cats_name_to_id=combined_cats_name_to_id)
     timers['misc_bbox'].toc()
 
     if cfg.MODEL.MASK_ON and boxes.shape[0] > 0:
@@ -107,6 +107,7 @@ def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None):
         timers['misc_keypoints'].toc()
     else:
         cls_keyps = None
+    print("Image has predictions", len(scores))
 
     return cls_boxes, cls_segms, cls_keyps
 
@@ -722,7 +723,7 @@ def combine_heatmaps_size_dep(hms_ts, ds_ts, us_ts, boxes, heur_f):
     return hms_c
 
 
-def box_results_with_nms_and_limit(scores, boxes, dataset_idx):  # NOTE: support single-batch
+def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_name_to_id):  # NOTE: support single-batch
     """Returns bounding-box detection results by thresholding on scores and
     applying non-maximum suppression (NMS).
     `boxes` has shape (#detections, 4 * #classes), where each row represents
@@ -734,11 +735,15 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx):  # NOTE: support
     dataset (including the background class). `scores[i, j]`` corresponds to the
     box at `boxes[i, j * 4:(j + 1) * 4]`.
     """
+    dataset_idx = 0
     num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
-    cls_boxes = [[] for _ in range(num_classes)]
+    total_num_class = len(combined_cats_name_to_id['names_to_continioues_id_to'])+1
+    cls_boxes = [np.empty(shape=(0,5)) for _ in range(total_num_class)]
+    #classes_per_dataset = combined_cats_name_to_id["dataset_to_classes"][dataset_idx]
     # Apply threshold on detection probabilities and apply NMS
     # Skip j = 0, because it's the background class
-    for j in range(1, num_classes):
+    #import ipdb; ipdb.set_trace()
+    for j in range(1, num_classes):#classes_per_dataset.keys(): #range(1, num_classes):#
         inds = np.where(scores[:, j] > cfg.TEST.SCORE_THRESH)[0]
         scores_j = scores[inds, j]
         boxes_j = boxes[inds, j * 4:(j + 1) * 4]
@@ -762,12 +767,14 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx):  # NOTE: support
                 cfg.TEST.BBOX_VOTE.VOTE_TH,
                 scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
             )
+        #cls_boxes[classes_per_dataset[j]] = nms_dets
         cls_boxes[j] = nms_dets
 
     # Limit to max_per_image detections **over all classes**
+    #import ipdb; ipdb.set_trace()
     if cfg.TEST.DETECTIONS_PER_IM > 0:
         image_scores = np.hstack(
-            [cls_boxes[j][:, -1] for j in range(1, num_classes)]
+            [cls_boxes[j][:, -1] for j in range(1, total_num_class)]
         )
         if len(image_scores) > cfg.TEST.DETECTIONS_PER_IM:
             image_thresh = np.sort(image_scores)[-cfg.TEST.DETECTIONS_PER_IM]
@@ -775,6 +782,7 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx):  # NOTE: support
                 keep = np.where(cls_boxes[j][:, -1] >= image_thresh)[0]
                 cls_boxes[j] = cls_boxes[j][keep, :]
 
+    #im_results = np.vstack([cls_boxes[j] for j in range(1, total_num_class)])
     im_results = np.vstack([cls_boxes[j] for j in range(1, num_classes)])
     boxes = im_results[:, :-1]
     scores = im_results[:, -1]

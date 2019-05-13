@@ -95,6 +95,7 @@ def run_inference(
     def result_getter():
         datasets_name = list(cfg.TRAIN.DATASETS)
         dict_combined = define_all_classes(datasets_name)
+        #import ipdb; ipdb.set_trace()
         if is_parent:
             # Parent case:
             # In this case we're either running inference on the entire dataset in a
@@ -155,7 +156,7 @@ def test_net_on_dataset(
         idx=-1):
     """Run inference on a dataset."""
     dataset = JsonDataset(dataset_name, idx)
-    change_ids(dataset, combined_cats_name_to_id)
+    #change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -171,7 +172,8 @@ def test_net_on_dataset(
     test_timer.toc()
     logger.info('Total inference time: {:.3f}s'.format(test_timer.average_time))
     if only_existed_class:
-        import ipdb; ipdb.set_trace()
+        pass
+        #import ipdb; ipdb.set_trace()
     results = task_evaluation.evaluate_all(
         dataset, all_boxes, all_segms, all_keyps, output_dir
     )
@@ -265,7 +267,8 @@ def test_net(
             # in-network RPN; 1-stage models don't require proposals.
             box_proposals = None
         im = cv2.imread(entry['image'])
-        cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers, roidb=entry)
+        #import ipdb; ipdb.set_trace()
+        cls_boxes_i, cls_segms_i, cls_keyps_i = im_detect_all(model, im, box_proposals, timers, roidb=entry, combined_cats_name_to_id = combined_cats_name_to_id)
 
         extend_results(i, all_boxes, cls_boxes_i)
         if cls_segms_i is not None:
@@ -360,7 +363,7 @@ def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_
     restrict it to a range of indices if ind_range is a pair of integers.
     """
     dataset = JsonDataset(dataset_name, idx)
-    change_ids(dataset, combined_cats_name_to_id)
+    #change_ids(dataset, combined_cats_name_to_id)
 
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
