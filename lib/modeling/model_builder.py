@@ -276,8 +276,17 @@ class Generalized_RCNN(nn.Module):
                 if proposal_predicted_class != 0:
                     if proposal_predicted_class in c_minus and objective_scores[proposal_idx] > OBJECTNESS_THRESHOLD:
                         feature = preidcted_features[proposal_idx]
-                        nn_distance, nn_idx = classes_faiss[dataset_idx].search(np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
-                        if proposal_predicted_class == dataset_idx_to_classes[dataset_idx][nn_idx] \
+                        nn_distance, nn_idx, chosen_dataset = np.inf, None, None
+
+                        for other_dataset_idx in classes_faiss.keys():
+                            if other_dataset_idx!=dataset_idx:
+                                nn_distance_other, nn_idx_other = classes_faiss[other_dataset_idx].search(np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)
+                                if nn_distance_other < nn_distance:
+                                    nn_distance = nn_distance_other
+                                    nn_idx = nn_idx_other
+                                    chosen_dataset = other_dataset_idx
+
+                        if proposal_predicted_class == dataset_idx_to_classes[chosen_dataset][nn_idx] \
                                 and nn_distance < median_distance_class[proposal_predicted_class]:
                             rpn_ret['labels_int32'][proposal_idx] = -1
                             indecies_to_drop.append(proposal_idx)

@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-#os.environ["CUDA_VISIBLE_DEVICES"]="3,4"
+os.environ["CUDA_VISIBLE_DEVICES"]="1,4"
 
 import numpy as np
 import yaml, time
@@ -131,7 +131,7 @@ def parse_args():
         '--ckpt_num_per_epoch',
         help='number of checkpoints to save in each epoch. '
              'Not include the one at the end of an epoch.',
-        default=3, type=int)
+        default=5, type=int)
 
     parser.add_argument(
         '--load_ckpt', help='checkpoint path to load')
@@ -471,7 +471,10 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
     k = 2
     images = []
     maskRCNN.training = False
-    output_path = os.path.join(output_dir,"feature_db_train" + str(args.step))
+    output_path = os.path.join(output_dir,"feature_db_train" + str(args.epoch))
+    if os.path.exists(output_path+".npy"):
+        print("Reading from db")
+        return np.load(output_path+".npy")
     start_time, end_time = time.time(), time.time()
     fucked_up_indecies = []
     print("Begin working with database")
@@ -520,7 +523,7 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
         k += len(ground_truth_outputs)
         if k % 500 == 0:
             print("Dumping it to pickle file ", output_path)
-            #np.save(output_path, feature_db)
+            np.save(output_path, feature_db)
     print("Dumping it to pickle file ", output_path)
     np.save(output_path, feature_db)
     with open(output_path + ".pkl", "wb") as f:
@@ -610,9 +613,10 @@ def create_dbs_for_datasets(feature_db, classes_faiss=None):
     dataset_idx_to_classes = {}
     if classes_faiss is None:
         classes_faiss = {}
+    import  ipdb; ipdb.set_trace()
     for dataset_id in set_datasets:
         dataset_idx_to_classes[dataset_id] = []
-        indecies = np.where(feature_db[:,1]!=dataset_id)[0]
+        indecies = np.where(feature_db[:,1]==dataset_id)[0]
         features = feature_db[indecies, 7: ]
         features = features.astype('float32')
 
