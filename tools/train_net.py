@@ -248,22 +248,8 @@ def main():
         dataset,
         batch_size=args.batch_size,
         sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
+        num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
-
-
-    dataset_groundtruth = RoiDataLoader(
-        roidb= roidb,
-        num_classes=cfg.MODEL.NUM_CLASSES,
-        training=False
-    )
-    dataloader_groundtruth = torch.utils.data.DataLoader(
-        dataset_groundtruth,
-        batch_size=args.batch_size,
-        sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-        collate_fn=collate_minibatch)
-
     assert_and_infer_cfg()
 
     ### Model ###
