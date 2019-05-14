@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-#os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,4,6"
 
 
 import numpy as np
@@ -177,10 +177,12 @@ def main():
 
 
     ### Adaptively adjust some configs ##
-    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
-    if args.batch_size is None:
-        args.batch_size = original_batch_size
     cfg.NUM_GPUS = torch.cuda.device_count()
+
+    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
+    #if args.batch_size is None:
+    args.batch_size = original_batch_size
+    print(args.batch_size,original_batch_size, cfg.NUM_GPUS )
     assert (args.batch_size % cfg.NUM_GPUS) == 0, \
         'batch_size: %d, NUM_GPUS: %d' % (args.batch_size, cfg.NUM_GPUS)
     cfg.TRAIN.IMS_PER_BATCH = args.batch_size // cfg.NUM_GPUS
@@ -191,6 +193,7 @@ def main():
     if args.num_workers is not None:
         cfg.DATA_LOADER.NUM_THREADS = args.num_workers
     print('Number of data loading threads: %d' % cfg.DATA_LOADER.NUM_THREADS)
+    #import ipdb; ipdb.set_trace()
 
     ### Adjust learning based on batch size change linearly
     old_base_lr = cfg.SOLVER.BASE_LR
@@ -246,7 +249,7 @@ def main():
 
     dataloader = torch.utils.data.DataLoader(
         dataset,
-        batch_size=args.batch_size,
+        batch_size=original_batch_size,
         sampler=sampler,
         num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
@@ -363,6 +366,7 @@ def main():
         args.step = args.start_iter
         global_step = iters_per_epoch * args.start_epoch + args.step
         for args.epoch in range(args.start_epoch, args.start_epoch + number_epochs):
+            print("Epoch", args.epoch)
             # ---- Start of epoch ----
 
             # adjust learning rate
@@ -375,38 +379,19 @@ def main():
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
-                input_data['only_bbox'] = [False]
                 net_outputs = maskRCNN(**input_data)
-                preidcted_classes = net_outputs["faiss_db"]["class"]
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
-                roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
-                print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],
-                      [roi["gt_classes"] for roi in roidb_batch])
-
-                preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
-                preidcted_bbox = net_outputs["faiss_db"]["bbox_pred"]
-                preidcted_features = net_outputs["faiss_db"]["bbox_feat"].detach().cpu().numpy().astype(np.float32)
-                foreground = net_outputs['faiss_db']["foreground"]
-                if args.bbbp:
-                    import ipdb; ipdb.set_trace()
-                    roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
-                    for roi in roidb_batch:
-                        dataset_idx = roi["dataset_idx"]
-                        if dataset_idx==1:
-                            pass
-
-                    #detect dataset
-                    #detect if the predicted clas is not from the dataset
-                    #detect probabability of being the object
-
+                #preidcted_classes = net_outputs["faiss_db"]["class"]
+                #preidcted_classes_score = net_outputs["faiss_db"]["class_score"]
+                #roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
+                #print("Image", [(os.path.basename(roi["image"]), roi["dataset_idx"]) for roi in roidb_batch])
+                #print(len(preidcted_classes), [cl for cl in preidcted_classes if cl != 0],
+                #      [roi["gt_classes"] for roi in roidb_batch])
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 training_stats.IterToc()
-                print("Finishing training part")
                 images = []
 
 
