@@ -735,10 +735,9 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_nam
     dataset (including the background class). `scores[i, j]`` corresponds to the
     box at `boxes[i, j * 4:(j + 1) * 4]`.
     """
-    dataset_idx = 0
     num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
     total_num_class = len(combined_cats_name_to_id['names_to_continioues_id_to'])+1
-    cls_boxes = [np.empty(shape=(0,5)) for _ in range(total_num_class)]
+    cls_boxes = [np.empty(shape=(0,5)) for _ in range(num_classes)]
     #classes_per_dataset = combined_cats_name_to_id["dataset_to_classes"][dataset_idx]
     # Apply threshold on detection probabilities and apply NMS
     # Skip j = 0, because it's the background class
@@ -774,7 +773,7 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_nam
     #import ipdb; ipdb.set_trace()
     if cfg.TEST.DETECTIONS_PER_IM > 0:
         image_scores = np.hstack(
-            [cls_boxes[j][:, -1] for j in range(1, total_num_class)]
+            [cls_boxes[j][:, -1] for j in range(1, num_classes)]
         )
         if len(image_scores) > cfg.TEST.DETECTIONS_PER_IM:
             image_thresh = np.sort(image_scores)[-cfg.TEST.DETECTIONS_PER_IM]
