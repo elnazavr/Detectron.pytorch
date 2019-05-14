@@ -203,15 +203,15 @@ class Generalized_RCNN(nn.Module):
             else:
                 idx = -1
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
-            if self.training:
-
-                cls_score_np = cls_score.detach().cpu().numpy()
-                return_dict['faiss_db']['bbox_feat'] = box_feat
-                return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
-                return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
-                deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
-                return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
-                return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
+            # if self.training:
+            #
+            #     cls_score_np = cls_score.detach().cpu().numpy()
+            #     return_dict['faiss_db']['bbox_feat'] = box_feat
+            #     return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
+            #     return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
+            #     deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
+            #     return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
+            #     return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
         else:
             # TODO: complete the returns for RPN only situation
             pass
