@@ -20,15 +20,20 @@ class fast_rcnn_outputs(nn.Module):
         if type(cfg.MODEL.NUM_CLASSES) is not list:
             cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
         self.cls_score, self.bbox_pred = {}, {}
+
         for idx, num_classes in enumerate(cfg.MODEL.NUM_CLASSES):
-            self.cls_score[idx] = nn.Linear(dim_in, num_classes)
+            self.cls_score.append(nn.Linear(dim_in, num_classes))
             if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:  # bg and fg
-                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * 2)
+                self.bbox_pred.append(nn.Linear(dim_in, 4 * 2))
             else:
-                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * num_classes)
+                self.bbox_pred.append(nn.Linear(dim_in, 4 * num_classes))
             self.bbox_pred[idx].to("cuda")
             self.cls_score[idx].to("cuda")
             self._init_weights(idx)
+        self.bbox_pred = nn.ModuleList(self.bbox_pred)
+        self.cls_score = nn.ModuleList(self.cls_score)
+        self.bbox_pred.to("cuda")
+        self.cls_score.to("cuda")
 
     def _init_weights(self, idx):
         init.normal_(self.cls_score[idx].weight, std=0.01)
