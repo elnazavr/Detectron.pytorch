@@ -15,16 +15,21 @@ class fast_rcnn_outputs(nn.Module):
         print(type(cfg.MODEL.NUM_CLASSES))
         if type(cfg.MODEL.NUM_CLASSES) is not list:
             cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
-        self.cls_score, self.bbox_pred = {}, {}
+        self.cls_score, self.bbox_pred = [], []
         for idx, num_classes in enumerate(cfg.MODEL.NUM_CLASSES):
-            self.cls_score[idx] = nn.Linear(dim_in, num_classes)
+            self.cls_score.append(nn.Linear(dim_in, num_classes))
             if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:  # bg and fg
-                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * 2)
+                self.bbox_pred.append(nn.Linear(dim_in, 4 * 2))
             else:
-                self.bbox_pred[idx] = nn.Linear(dim_in, 4 * num_classes)
+                self.bbox_pred.append(nn.Linear(dim_in, 4 * num_classes))
             self.bbox_pred[idx].to("cuda")
             self.cls_score[idx].to("cuda")
             self._init_weights(idx)
+        self.bbox_pred = nn.ModuleList(self.bbox_pred)
+        self.cls_score = nn.ModuleList(self.cls_score)
+        self.bbox_pred.to("cuda")
+        self.cls_score.to("cuda")
+
 
     def _init_weights(self, idx):
         init.normal_(self.cls_score[idx].weight, std=0.01)
@@ -43,13 +48,22 @@ class fast_rcnn_outputs(nn.Module):
         return detectron_weight_mapping, orphan_in_detectron
 
     def forward(self, x, idx=-1):
-        idx = 0
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
+        # if self.training:
         cls_score = self.cls_score[idx](x)
         if not self.training:
             cls_score = F.softmax(cls_score, dim=1)
         bbox_pred = self.bbox_pred[idx](x)
+        # else:
+        #     cls_score, bbox_pred = [], []
+        #     for i in range(len(self.cls_score)):
+        #         cls_score_head = self.cls_score[i](x)
+        #         if not self.training:
+        #             cls_score_head = F.softmax(cls_score_head, dim=1)
+        #         cls_score.append(cls_score_head)
+        #         bbox_pred_head = self.bbox_pred[i](x)
+        #         bbox_pred.append(bbox_pred_head)
         return cls_score, bbox_pred
 
 
