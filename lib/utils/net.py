@@ -156,11 +156,11 @@ def save_ckpt(output_dir, args, model, optimizer):
 def load_ckpt(model, ckpt):
     """Load checkpoint"""
     mapping, _ = model.detectron_weight_mapping
+    import ipdb;ipdb.set_trace()
     state_dict = {}
     for name in ckpt:
-        if mapping[name]:
-            state_dict[name] = ckpt[name]
-    model.load_state_dict(state_dict, strict=False)
+        state_dict[name] = ckpt[name]
+    model.load_state_dict(state_dict, strict  =False)
 
 
 def get_group_gn(dim):
