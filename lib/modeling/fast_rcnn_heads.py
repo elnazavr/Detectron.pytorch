@@ -19,7 +19,7 @@ class fast_rcnn_outputs(nn.Module):
         super().__init__()
         if type(cfg.MODEL.NUM_CLASSES) is not list:
             cfg.MODEL.NUM_CLASSES = [cfg.MODEL.NUM_CLASSES]
-        self.cls_score, self.bbox_pred = {}, {}
+        self.cls_score, self.bbox_pred = [], []
 
         for idx, num_classes in enumerate(cfg.MODEL.NUM_CLASSES):
             self.cls_score.append(nn.Linear(dim_in, num_classes))
@@ -68,15 +68,20 @@ class fast_rcnn_outputs(nn.Module):
             right_detected_foreground_idx = np.where((rpn_ret['labels_int32']==chosen_classes) & (rpn_ret['labels_int32']!=0))[0]
             right_detected_foreground_score = np.max(cls_score_np[right_detected_foreground_idx], axis=1)
             right_detected_foreground_labels = chosen_classes[right_detected_foreground_idx]
-            if len(right_detected_foreground_idx) >0:
-                for label, label_score in zip(right_detected_foreground_labels, right_detected_foreground_score):
-                    detected_class = ds_classes[head_idx, label]
-                    non_zero_idx = np.where(objective_k_threholds[detected_class,:]==0)[0]
-                    if len(non_zero_idx)>0:
-                        objective_k_threholds[detected_class, non_zero_idx[-1]] = np.double(label_score)
-                    else:
-                        objective_k_threholds[detected_class, 1:] = objective_k_threholds[detected_class, :-1]
-                        objective_k_threholds[detected_class, 0] = np.double(label_score)
+            detected_class = ds_classes[head_idx, right_detected_foreground_labels]
+            detected_class = detected_class
+            right_detected_foreground_score = torch.from_numpy(right_detected_foreground_score)
+            #
+            # if len(right_detected_foreground_idx) >0:
+            #     for label, label_score in zip(right_detected_foreground_labels, right_detected_foreground_score):
+            #         detected_class = ds_classes[head_idx, label]
+            #         non_zero_idx = np.where(objective_k_threholds[detected_class,:]==0)[0]
+            #         if len(non_zero_idx)>0:
+            #             objective_k_threholds[detected_class, non_zero_idx[-1]] = np.double(label_score)
+            #         else:
+            #             objective_k_threholds[detected_class, 1:] = objective_k_threholds[detected_class, :-1]
+            #             objective_k_threholds[detected_class, 0] = np.double(label_score)
+            #    print(idx, label, label_score)
 
             background_idx = np.where(chosen_classes==0)[0]
 
@@ -127,7 +132,8 @@ class fast_rcnn_outputs(nn.Module):
                 bbox_pred_head = self.bbox_pred[i](x)
                 bbox_pred.append(bbox_pred_head)
 
-        return cls_score, bbox_pred, indecies_to_drop, objective_k_threholds
+        return cls_score, bbox_pred, indecies_to_drop, detected_class, right_detected_foreground_score
+               #objective_k_threholds #detected_class, right_detected_foreground_score
 
 
 def fast_rcnn_losses(cls_score, bbox_pred, label_int32, bbox_targets,

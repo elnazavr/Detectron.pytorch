@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-#os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="0,2,4,6"
 
 
 import numpy as np
@@ -178,10 +178,12 @@ def main():
 
 
     ### Adaptively adjust some configs ##
-    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
-    if args.batch_size is None:
-        args.batch_size = original_batch_size
     cfg.NUM_GPUS = torch.cuda.device_count()
+
+    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
+    # if args.batch_size is None:
+    args.batch_size = original_batch_size
+    print(args.batch_size, original_batch_size, cfg.NUM_GPUS)
     assert (args.batch_size % cfg.NUM_GPUS) == 0, \
         'batch_size: %d, NUM_GPUS: %d' % (args.batch_size, cfg.NUM_GPUS)
     cfg.TRAIN.IMS_PER_BATCH = args.batch_size // cfg.NUM_GPUS
@@ -192,7 +194,6 @@ def main():
     if args.num_workers is not None:
         cfg.DATA_LOADER.NUM_THREADS = args.num_workers
     print('Number of data loading threads: %d' % cfg.DATA_LOADER.NUM_THREADS)
-
     ### Adjust learning based on batch size change linearly
     old_base_lr = cfg.SOLVER.BASE_LR
     cfg.SOLVER.BASE_LR *= args.batch_size / original_batch_size
@@ -249,21 +250,9 @@ def main():
         dataset,
         batch_size=args.batch_size,
         sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
+        num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
 
-
-    dataset_groundtruth = RoiDataLoader(
-        roidb= roidb,
-        num_classes=cfg.MODEL.NUM_CLASSES,
-        training=False
-    )
-    dataloader_groundtruth = torch.utils.data.DataLoader(
-        dataset_groundtruth,
-        batch_size=args.batch_size,
-        sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-        collate_fn=collate_minibatch)
 
     assert_and_infer_cfg()
 
@@ -377,6 +366,8 @@ def main():
     ds_classes = torch.from_numpy(ds_classes)
     objective_k_threholds = np.zeros((int(max_class)+1, 50))
     objective_k_threholds = torch.from_numpy(objective_k_threholds)
+    last_updated = np.zeros((int(max_class)+1)).astype(int)
+
     #objective_k_threholds =  list(map(Variable, objective_k_threholds))
 
     try:
@@ -398,11 +389,35 @@ def main():
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
-                input_data['only_bbox'] = [False]
-                input_data["objective_k_threholds"] = [objective_k_threholds]
-                input_data["ds_classes"] = [ds_classes]
+                input_data["objective_k_threholds"] = [objective_k_threholds]*cfg.DATA_LOADER.NUM_THREADS
+                input_data["ds_classes"] = [ds_classes]*cfg.DATA_LOADER.NUM_THREADS
                 net_outputs = maskRCNN(**input_data)
-                objective_k_threholds = net_outputs["objective_k_threholds"]
+                objective_k_threholds_per_gpu = net_outputs["objective_k_threholds"].reshape(cfg.DATA_LOADER.NUM_THREADS, int(max_class)+1, 50)
+                objective_k_threholds_classes_per_gpu = torch.cat([objective_k_threholds_per_gpu[i] for i in range(cfg.DATA_LOADER.NUM_THREADS)], 1)
+                objective_k_threholds_classes_per_gpu = torch.sort(objective_k_threholds_classes_per_gpu,descending=True)[0]
+                rows, columns = np.where(objective_k_threholds_classes_per_gpu > 0)
+
+                set_of_rows = set(rows)
+                for row in set_of_rows:
+                    selected_columns = columns[np.where(rows==row)]
+                    values_to_update = objective_k_threholds_classes_per_gpu[row,selected_columns]
+                    from_idx = last_updated[row]
+                    N_values = len(values_to_update)
+                    if N_values>50:
+                        values_to_update = values_to_update[:50]
+                        N_values = 50
+                    to_idx = from_idx + N_values
+                    if to_idx< 50:
+                        objective_k_threholds[row, from_idx:to_idx] = values_to_update
+                        last_updated[row] = to_idx
+                    else:
+                        from_zero = to_idx % 50
+
+                        objective_k_threholds[row, from_idx: 50] = values_to_update[0: N_values -from_zero]
+                        objective_k_threholds[row, :from_zero] = values_to_update[N_values-from_zero:N_values]
+                        last_updated[row] = from_zero
+
+                #objective_k_threholds = net_outputs["objective_k_threholds"]
 
                 #preidcted_classes = net_outputs["faiss_db"]["class"].detach().cpu().numpy().astype(np.float32)
                 #roidb_batch = list(map(lambda x: blob_utils.deserialize(x)[0], input_data["roidb"][0]))
@@ -438,15 +453,6 @@ def main():
             net_utils.save_ckpt(output_dir, args, maskRCNN, optimizer)
             # reset starting iter number after first epoch
             args.start_iter = 0
-            if args.bbbp:
-                dimension = 1024
-                feature_db = update_db(args, dataloader_groundtruth, maskRCNN, images, image_to_idx, feature_db, output_dir)
-                features = feature_db[:, 7:]
-                features = features.astype('float32')
-                faiss_db = faiss.IndexFlatL2(dimension)
-                faiss_db.add(features)
-                median_distance_class = find_threhold_for_each_class(faiss_db, features, feature_db[:, 2], k_neighbours=5)
-
 
         # ---- Training ends ----
         if iters_per_epoch % args.disp_interval != 0:

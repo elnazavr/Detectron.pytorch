@@ -201,18 +201,37 @@ class Generalized_RCNN(nn.Module):
                 idx = roidb[0]["dataset_idx"]
             else:
                 idx = -1
-            cls_score, bbox_pred, indecies_to_drop, objective_k_threholds = self.Box_Outs(box_feat, idx, rpn_ret, objective_k_threholds, ds_classes)
+            cls_score, bbox_pred, indecies_to_drop, detected_classes, right_detected_foreground_score  = self.Box_Outs(box_feat, idx, rpn_ret, objective_k_threholds, ds_classes)
+            #print("adter faster rcnn", detected_class)
 
+            #detected_class, right_detected_foreground_score
+
+            objective_k_threholds = np.zeros(shape=objective_k_threholds.shape)
+            if len(right_detected_foreground_score) >0:
+                for detected_class, label_score in zip(detected_classes, right_detected_foreground_score):
+                    detected_class = int(detected_class.cpu().data)
+                    non_zero_idx = np.where(objective_k_threholds[detected_class, :] == 0)[0]
+                    if len(non_zero_idx) > 0:
+                        objective_k_threholds[detected_class, non_zero_idx[0]] = np.double(label_score)
+            #         non_zero_idx = np.where(objective_k_threholds[detected_class,:]==0)[0]
+            #         print(detected_class, non_zero_idx[-1], label_score )
+            #         if len(non_zero_idx)>0:
+            #             objective_k_threholds[detected_class, non_zero_idx[-1]] = np.double(label_score)
+            #         else:
+            #             objective_k_threholds[detected_class, 1:] = objective_k_threholds[detected_class, :-1]
+            #             objective_k_threholds[detected_class, 0] = np.double(label_score)
+            # print(objective_k_threholds)
             return_dict["objective_k_threholds"] = objective_k_threholds
+
             if self.training:
 
                 cls_score_np = cls_score.detach().cpu().numpy()
-                return_dict['faiss_db']['bbox_feat'] = box_feat
-                return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
-                return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
-                deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
-                return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
-                return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
+                # return_dict['faiss_db']['bbox_feat'] = box_feat
+                # return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
+                # return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
+                # deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
+                # return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
+                # return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
         else:
             # TODO: complete the returns for RPN only situation
             pass
@@ -226,34 +245,34 @@ class Generalized_RCNN(nn.Module):
             #null the ignore idecies:
             lens = []
             levels_to_idx = {}
+            if len(indecies_to_drop)>0:
 
-            indecies_to_drop_cumalitve = rpn_ret["rois_idx_restore_int32"][indecies_to_drop]
+                indecies_to_drop_cumalitve = rpn_ret["rois_idx_restore_int32"][indecies_to_drop]
 
-            for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
-                if "rois_fpn" + str(lvl) in rpn_ret.keys():
-                    lens.append(len(rpn_ret["rois_fpn" + str(lvl)]))
-                    levels_to_idx[lvl] = []
-            cumulative_lens = [np.sum(lens[:i+1]) for i in range(len(lens))]
-            for idx_roi, idx_cum in zip(indecies_to_drop, indecies_to_drop_cumalitve):
-                for idx_lvl in range(len(cumulative_lens)):
-                    if idx_cum < cumulative_lens[idx_lvl]:
-                        levels_to_idx[cfg.FPN.RPN_MIN_LEVEL+idx_lvl].append(idx_roi)
-                        break;
-            for lvl in levels_to_idx.keys():
-                _, A, H, W = rpn_ret["rpn_cls_logits_fpn" + str(lvl)].shape
-                if len(levels_to_idx[lvl]) > 0 :
-                    for roi_idx in levels_to_idx[lvl]:
-                        idx = rpn_ret["indecies_anchors"][roi_idx]
-                        if idx!=-1:
-                            h, w, a = get_hwa(idx, A, W)
-                            try:
-                                rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
-                            except:
-                                pass
+                for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
+                    if "rois_fpn" + str(lvl) in rpn_ret.keys():
+                        lens.append(len(rpn_ret["rois_fpn" + str(lvl)]))
+                        levels_to_idx[lvl] = []
+                cumulative_lens = [np.sum(lens[:i+1]) for i in range(len(lens))]
+                for idx_roi, idx_cum in zip(indecies_to_drop, indecies_to_drop_cumalitve):
+                    for idx_lvl in range(len(cumulative_lens)):
+                        if idx_cum < cumulative_lens[idx_lvl]:
+                            levels_to_idx[cfg.FPN.RPN_MIN_LEVEL+idx_lvl].append(idx_roi)
+                            break;
+                for lvl in levels_to_idx.keys():
+                    _, A, H, W = rpn_ret["rpn_cls_logits_fpn" + str(lvl)].shape
+                    if len(levels_to_idx[lvl]) > 0 :
+                        for roi_idx in levels_to_idx[lvl]:
+                            idx = rpn_ret["indecies_anchors"][roi_idx]
+                            if idx!=-1:
+                                h, w, a = get_hwa(idx, A, W)
+                                try:
+                                    rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
+                                except:
+                                    pass
             rpn_kwargs.update(rpn_ret)
 
             loss_rpn_cls, loss_rpn_bbox = rpn_heads.generic_rpn_losses(**rpn_kwargs)
-
 
             if cfg.FPN.FPN_ON:
                 for i, lvl in enumerate(range(cfg.FPN.RPN_MIN_LEVEL, cfg.FPN.RPN_MAX_LEVEL + 1)):
