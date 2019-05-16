@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="4,5"
+os.environ["CUDA_VISIBLE_DEVICES"]="4,5,6,7"
 
 import numpy as np
 import yaml, time
@@ -145,7 +145,9 @@ def parse_args():
     parser.add_argument(
         '--bbbp', help='Use tensorflow tensorboard to log training info',
         action='store_true')
-
+    parser.add_argument(
+        '--freeze', help='Frezeze loaded weights',
+        action='store_true')
     return parser.parse_args()
 
 
@@ -287,12 +289,18 @@ def main():
 
     if cfg.CUDA:
         maskRCNN.cuda()
-
+    if args.freeze:
+        for key, value in dict(maskRCNN.named_parameters()).items():
+            value.requires_grad = False
+            if 'Mask' in key:
+                value.requires_grad = True
     ### Optimizer ###
     bias_params = []
     nonbias_params = []
+    trained_param = []
     for key, value in dict(maskRCNN.named_parameters()).items():
         if value.requires_grad:
+            trained_param.append(key)
             if 'bias' in key:
                 bias_params.append(value)
             else:
@@ -306,10 +314,17 @@ def main():
          'weight_decay': cfg.SOLVER.WEIGHT_DECAY if cfg.SOLVER.BIAS_WEIGHT_DECAY else 0}
     ]
 
+
+    print(trained_param)
+
     if cfg.SOLVER.TYPE == "SGD":
         optimizer = torch.optim.SGD(params, momentum=cfg.SOLVER.MOMENTUM)
+
+        #optimizer = torch.optim.SGD(filter(lambda p: p.requires_grad, params.values()), momentum=cfg.SOLVER.MOMENTUM)
     elif cfg.SOLVER.TYPE == "Adam":
         optimizer = torch.optim.Adam(params)
+
+
 
     ### Load checkpoint
     if args.load_ckpt:
@@ -317,6 +332,7 @@ def main():
         logging.info("loading checkpoint %s", load_name)
         checkpoint = torch.load(load_name, map_location=lambda storage, loc: storage)
         net_utils.load_ckpt(maskRCNN, checkpoint['model'])
+
         if args.resume:
             print(checkpoint['iters_per_epoch'], train_size // args.batch_size)
             #assert checkpoint['iters_per_epoch'] == train_size // args.batch_size, \
@@ -344,7 +360,7 @@ def main():
     lr = optimizer.param_groups[0]['lr']  # lr of non-bias parameters, for commmand line outputs.
 
     maskRCNN = mynn.DataParallel(maskRCNN, cpu_keywords=['im_info', 'roidb'],
-                                 minibatch=True, bbbp=args.bbbp)
+                                 minibatch=True)
 
     print(maskRCNN)
     ### Training Setups ###
@@ -398,8 +414,7 @@ def main():
                 #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
                 median_distance_class = find_threhold_for_each_class(classes_faiss, feature_db, k_neighbours=5)
                 print("Median distance class", median_distance_class)
-                maskRCNN.training = True
-
+                #maskRCNN.training = True
             # adjust learning rate
             if args.lr_decay_epochs and args.epoch == args.lr_decay_epochs[0] and args.start_iter == 0:
                 args.lr_decay_epochs.pop(0)
@@ -420,11 +435,11 @@ def main():
                     input_data['bbbp'] = [args.bbbp] * cfg.DATA_LOADER.NUM_THREADS
 
                 net_outputs = maskRCNN(**input_data)
-
                 training_stats.UpdateIterStats(net_outputs)
                 loss = net_outputs['total_loss']
                 optimizer.zero_grad()
                 loss.backward()
+
                 optimizer.step()
                 training_stats.IterToc()
                 images = []
