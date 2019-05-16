@@ -156,7 +156,6 @@ def save_ckpt(output_dir, args, model, optimizer):
 def load_ckpt(model, ckpt):
     """Load checkpoint"""
     mapping, _ = model.detectron_weight_mapping
-    import ipdb;ipdb.set_trace()
     state_dict = {}
     for name in ckpt:
         state_dict[name] = ckpt[name]
