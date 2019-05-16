@@ -77,7 +77,7 @@ def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None, combin
     # cls_boxes boxes and scores are separated by class and in the format used
     # for evaluating results
     timers['misc_bbox'].tic()
-    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=roidb["dataset_idx"], combined_cats_name_to_id=combined_cats_name_to_id)
+    scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=-1, combined_cats_name_to_id=combined_cats_name_to_id)
     timers['misc_bbox'].toc()
 
     if cfg.MODEL.MASK_ON and boxes.shape[0] > 0:
@@ -735,54 +735,55 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_nam
     dataset (including the background class). `scores[i, j]`` corresponds to the
     box at `boxes[i, j * 4:(j + 1) * 4]`.
     """
-    num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
+    #num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
     total_num_class = len(combined_cats_name_to_id['names_to_continioues_id_to'])+1
-    cls_boxes = [np.empty(shape=(0,5)) for _ in range(num_classes)]
-    #classes_per_dataset = combined_cats_name_to_id["dataset_to_classes"][dataset_idx]
-    # Apply threshold on detection probabilities and apply NMS
-    # Skip j = 0, because it's the background class
-    #import ipdb; ipdb.set_trace()
-    for j in range(1, num_classes):#classes_per_dataset.keys(): #range(1, num_classes):#
-        inds = np.where(scores[:, j] > cfg.TEST.SCORE_THRESH)[0]
-        scores_j = scores[inds, j]
-        boxes_j = boxes[inds, j * 4:(j + 1) * 4]
-        dets_j = np.hstack((boxes_j, scores_j[:, np.newaxis])).astype(np.float32, copy=False)
-        if cfg.TEST.SOFT_NMS.ENABLED:
-            nms_dets, _ = box_utils.soft_nms(
-                dets_j,
-                sigma=cfg.TEST.SOFT_NMS.SIGMA,
-                overlap_thresh=cfg.TEST.NMS,
-                score_thresh=0.0001,
-                method=cfg.TEST.SOFT_NMS.METHOD
-            )
-        else:
-            keep = box_utils.nms(dets_j, cfg.TEST.NMS)
-            nms_dets = dets_j[keep, :]
-        # Refine the post-NMS boxes using bounding-box voting
-        if cfg.TEST.BBOX_VOTE.ENABLED:
-            nms_dets = box_utils.box_voting(
-                nms_dets,
-                dets_j,
-                cfg.TEST.BBOX_VOTE.VOTE_TH,
-                scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
-            )
-        #cls_boxes[classes_per_dataset[j]] = nms_dets
-        cls_boxes[j] = nms_dets
+    cls_boxes = [np.empty(shape=(0,5)) for _ in range(total_num_class)]
+    for dataset_idx in len(cfg.MODEL.NUM_CLASSES):
+        classes_per_dataset = combined_cats_name_to_id["dataset_to_classes"][dataset_idx]
+        # Apply threshold on detection probabilities and apply NMS
+        # Skip j = 0, because it's the background class
+        #import ipdb; ipdb.set_trace()
+        for j in classes_per_dataset.keys(): #range(1, num_classes):#
+            inds = np.where(scores[dataset_idx][:, j] > cfg.TEST.SCORE_THRESH)[0]
+            scores_j = scores[dataset_idx][inds, j]
+            boxes_j = boxes[dataset_idx][inds, j * 4:(j + 1) * 4]
+            dets_j = np.hstack((boxes_j, scores_j[:, np.newaxis])).astype(np.float32, copy=False)
+            if cfg.TEST.SOFT_NMS.ENABLED:
+                nms_dets, _ = box_utils.soft_nms(
+                    dets_j,
+                    sigma=cfg.TEST.SOFT_NMS.SIGMA,
+                    overlap_thresh=cfg.TEST.NMS,
+                    score_thresh=0.0001,
+                    method=cfg.TEST.SOFT_NMS.METHOD
+                )
+            else:
+                keep = box_utils.nms(dets_j, cfg.TEST.NMS)
+                nms_dets = dets_j[keep, :]
+            # Refine the post-NMS boxes using bounding-box voting
+            if cfg.TEST.BBOX_VOTE.ENABLED:
+                nms_dets = box_utils.box_voting(
+                    nms_dets,
+                    dets_j,
+                    cfg.TEST.BBOX_VOTE.VOTE_TH,
+                    scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
+                )
+            #cls_boxes[classes_per_dataset[j]] = nms_dets
+            cls_boxes[j] = nms_dets
 
     # Limit to max_per_image detections **over all classes**
     #import ipdb; ipdb.set_trace()
     if cfg.TEST.DETECTIONS_PER_IM > 0:
         image_scores = np.hstack(
-            [cls_boxes[j][:, -1] for j in range(1, num_classes)]
+            [cls_boxes[j][:, -1] for j in range(1, total_num_class)]
         )
         if len(image_scores) > cfg.TEST.DETECTIONS_PER_IM:
             image_thresh = np.sort(image_scores)[-cfg.TEST.DETECTIONS_PER_IM]
-            for j in range(1, num_classes):
+            for j in range(1, total_num_class):
                 keep = np.where(cls_boxes[j][:, -1] >= image_thresh)[0]
                 cls_boxes[j] = cls_boxes[j][keep, :]
 
     #im_results = np.vstack([cls_boxes[j] for j in range(1, total_num_class)])
-    im_results = np.vstack([cls_boxes[j] for j in range(1, num_classes)])
+    im_results = np.vstack([cls_boxes[j] for j in range(1, total_num_class)])
     boxes = im_results[:, :-1]
     scores = im_results[:, -1]
     return scores, boxes, cls_boxes

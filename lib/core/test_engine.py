@@ -104,7 +104,8 @@ def run_inference(
             all_results = {}
             for i in range(len(cfg.TEST.DATASETS)):
                 dataset_name, proposal_file = get_inference_dataset(i)
-                output_dir = args.output_dir
+                output_dir = os.path.join(args.output_dir,dataset_name)
+
                 results = parent_func(
                     args,
                     dataset_name,
@@ -310,7 +311,7 @@ def test_net(
                 segms=cls_segms_i,
                 keypoints=cls_keyps_i,
                 thresh=cfg.VIS_TH,
-                box_alpha=0.8,
+                box_alpha=0.9,
                 dataset=dataset,
                 show_class=True
             )

@@ -76,6 +76,7 @@ if __name__ == '__main__':
         ckpt_path = args.load_ckpt if args.load_ckpt else args.load_detectron
         args.output_dir = os.path.join(
             os.path.dirname(os.path.dirname(ckpt_path)), 'test')
+        args.output_dir = os.path.join(args.output_dir , os.path.basename(ckpt_path))
         logger.info('Automatically set output directory to %s', args.output_dir)
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)

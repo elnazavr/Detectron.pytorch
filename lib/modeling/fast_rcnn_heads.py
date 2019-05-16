@@ -50,20 +50,20 @@ class fast_rcnn_outputs(nn.Module):
     def forward(self, x, idx=-1):
         if x.dim() == 4:
             x = x.squeeze(3).squeeze(2)
-        # if self.training:
-        cls_score = self.cls_score[idx](x)
-        if not self.training:
-            cls_score = F.softmax(cls_score, dim=1)
-        bbox_pred = self.bbox_pred[idx](x)
-        # else:
-        #     cls_score, bbox_pred = [], []
-        #     for i in range(len(self.cls_score)):
-        #         cls_score_head = self.cls_score[i](x)
-        #         if not self.training:
-        #             cls_score_head = F.softmax(cls_score_head, dim=1)
-        #         cls_score.append(cls_score_head)
-        #         bbox_pred_head = self.bbox_pred[i](x)
-        #         bbox_pred.append(bbox_pred_head)
+        if self.training:
+            cls_score = self.cls_score[idx](x)
+            if not self.training:
+                cls_score = F.softmax(cls_score, dim=1)
+            bbox_pred = self.bbox_pred[idx](x)
+        else:
+            cls_score, bbox_pred = [], []
+            for i in range(len(self.cls_score)):
+                cls_score_head = self.cls_score[i](x)
+                if not self.training:
+                    cls_score_head = F.softmax(cls_score_head, dim=1)
+                cls_score.append(cls_score_head)
+                bbox_pred_head = self.bbox_pred[i](x)
+                bbox_pred.append(bbox_pred_head)
         return cls_score, bbox_pred
 
 
