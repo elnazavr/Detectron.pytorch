@@ -160,13 +160,13 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=N
         # unscale back to raw image space
         boxes = rois[:, 1:5] / im_scale
 
-    scores = return_dict['cls_score'].data.cpu().numpy().squeeze()
-    scores = scores.reshape([-1, scores.shape[-1]])
+    scores = [return_dict['cls_score'][i].data.cpu().numpy().squeeze() for i in range(len(cfg.MODEL.NUM_CLASSES))]
+    scores = [scores[i].reshape([-1, scores[i].shape[-1]]) for i in range(len(cfg.MODEL.NUM_CLASSES))]
     if cfg.TEST.BBOX_REG:
         # Apply bounding-box regression deltas
-        box_deltas = return_dict['bbox_pred'].data.cpu().numpy().squeeze()
+        box_deltas = [return_dict['bbox_pred'][i].data.cpu().numpy().squeeze() for i in range(len(cfg.MODEL.NUM_CLASSES))]
         # In case there is 1 proposal
-        box_deltas = box_deltas.reshape([-1, box_deltas.shape[-1]])
+        box_deltas = [box_deltas[i].reshape([-1, box_deltas[i].shape[-1]]) for i in range(len(cfg.MODEL.NUM_CLASSES))]
         if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
             # Remove predictions for bg class (compat with MSRA code)
             box_deltas = box_deltas[:, -4:]
@@ -174,8 +174,8 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=N
             # (legacy) Optionally normalize targets by a precomputed mean and stdev
             box_deltas = box_deltas.view(-1, 4) * cfg.TRAIN.BBOX_NORMALIZE_STDS \
                          + cfg.TRAIN.BBOX_NORMALIZE_MEANS
-        pred_boxes = box_utils.bbox_transform(boxes, box_deltas, cfg.MODEL.BBOX_REG_WEIGHTS)
-        pred_boxes = box_utils.clip_tiled_boxes(pred_boxes, im.shape)
+        pred_boxes = [box_utils.bbox_transform(boxes, box_deltas[i], cfg.MODEL.BBOX_REG_WEIGHTS)  for i in range(len(cfg.MODEL.NUM_CLASSES))]
+        pred_boxes = [box_utils.clip_tiled_boxes(pred_boxes[i], im.shape)  for i in range(len(cfg.MODEL.NUM_CLASSES))]
         if cfg.MODEL.CLS_AGNOSTIC_BBOX_REG:
             pred_boxes = np.tile(pred_boxes, (1, scores.shape[1]))
     else:
@@ -738,7 +738,7 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_nam
     #num_classes = cfg.MODEL.NUM_CLASSES[dataset_idx]
     total_num_class = len(combined_cats_name_to_id['names_to_continioues_id_to'])+1
     cls_boxes = [np.empty(shape=(0,5)) for _ in range(total_num_class)]
-    for dataset_idx in len(cfg.MODEL.NUM_CLASSES):
+    for dataset_idx in range(len(cfg.MODEL.NUM_CLASSES)):
         classes_per_dataset = combined_cats_name_to_id["dataset_to_classes"][dataset_idx]
         # Apply threshold on detection probabilities and apply NMS
         # Skip j = 0, because it's the background class
@@ -767,8 +767,8 @@ def box_results_with_nms_and_limit(scores, boxes, dataset_idx, combined_cats_nam
                     cfg.TEST.BBOX_VOTE.VOTE_TH,
                     scoring_method=cfg.TEST.BBOX_VOTE.SCORING_METHOD
                 )
-            #cls_boxes[classes_per_dataset[j]] = nms_dets
-            cls_boxes[j] = nms_dets
+            cls_boxes[classes_per_dataset[j]] = nms_dets
+            #cls_boxes[j] = nms_dets
 
     # Limit to max_per_image detections **over all classes**
     #import ipdb; ipdb.set_trace()

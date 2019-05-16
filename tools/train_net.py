@@ -107,7 +107,7 @@ def parse_args():
 
     # Epoch
     parser.add_argument(
-        '--start_iter',
+        '--ool',
         help='Starting iteration for first training epoch. 0-indexed.',
         default=0, type=int)
     parser.add_argument(
