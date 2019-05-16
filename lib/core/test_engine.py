@@ -104,7 +104,7 @@ def run_inference(
             all_results = {}
             for i in range(len(cfg.TEST.DATASETS)):
                 dataset_name, proposal_file = get_inference_dataset(i)
-                output_dir = args.output_dir
+                output_dir = os.path.join(args.output_dir, dataset_name)
                 results = parent_func(
                     args,
                     dataset_name,
