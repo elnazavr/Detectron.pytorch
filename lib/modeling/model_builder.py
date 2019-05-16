@@ -201,8 +201,6 @@ class Generalized_RCNN(nn.Module):
         device_id = im_data.get_device()
 
         return_dict = {}  # A dict to collect return variables
-        return_dict['faiss_db'] = {}
-        return_dict["ground_truth"] = {}
         blob_conv = self.Conv_Body(im_data)
         if not only_bbox:
             rpn_ret = self.RPN(blob_conv, im_info, roidb)
@@ -213,9 +211,10 @@ class Generalized_RCNN(nn.Module):
                 # Retain only the blobs that will be used for RoI heads. `blob_conv` may include
                 # extra blobs that are used for RPN proposals, but not for RoI heads.
                 blob_conv = blob_conv[-self.num_roi_levels:]
+            return_dict["ground_truth"] = []
+            return_dict["bboxes"] = []
             for i in range(len(roidb)):
                 rpn_ret = {}
-                return_dict["ground_truth"][i] = {}
                 for lvl in range(lvl_min, lvl_max + 1):
                     rpn_ret["rois_fpn" + str(lvl)] = []
                 target_lvls = fpn_utils.map_rois_to_fpn_levels(roidb[i]["boxes"],lvl_min, lvl_max)
@@ -225,7 +224,8 @@ class Generalized_RCNN(nn.Module):
                     rpn_ret[key] = np.array(rpn_ret[key])
 
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
-                return_dict["ground_truth"][i]["features"] = box_feat
+                return_dict["ground_truth"].append(box_feat)
+                return_dict["bboxes"].append(roidb[i]["boxes"])
             return return_dict
 
 
@@ -247,20 +247,13 @@ class Generalized_RCNN(nn.Module):
             else:
                 box_feat = self.Box_Head(blob_conv, rpn_ret)
             cls_score, bbox_pred = self.Box_Outs(box_feat)
-
-            cls_score_np = F.softmax(cls_score).detach().cpu().numpy()
-            if self.training:
-                return_dict['faiss_db']['bbox_feat'] = box_feat
-                return_dict['faiss_db']["class"] = np.argmax(cls_score_np, axis=1)
-                return_dict['faiss_db']["class_score"] = np.max(cls_score_np, axis=1)
-                deltas_for_max_class = np.array([bbox_pred.detach().cpu().numpy()[idx, 4 * class_idx: 4 * class_idx + 4] for idx, class_idx in enumerate(return_dict['faiss_db']["class"])])
-                return_dict['faiss_db']["bbox_pred"] = box_utils.bbox_transform(rpn_ret["rois"][:, 1:], deltas_for_max_class, cfg.MODEL.BBOX_REG_WEIGHTS)
-                return_dict['faiss_db']["foreground"] = list(map(int, rpn_ret["labels_int32"]!=0))
         else:
             # TODO: complete the returns for RPN only situation
             pass
 
         if bbbp and self.training:
+            cls_score_np = F.softmax(cls_score).detach().cpu().numpy()
+
             preidcted_classes = np.argmax(cls_score_np, axis=1)
             objective_scores = rpn_ret['objective_scores']
 
@@ -312,7 +305,6 @@ class Generalized_RCNN(nn.Module):
                             idx = rpn_ret["indecies_anchors"][roi_idx]
                             if idx != -1:
                                 h, w, a = get_hwa(idx, A, W)
-                                print(lvl, roi_idx, idx, get_hwa(idx, A, W))
                                 rpn_kwargs["rpn_labels_int32_wide_fpn" + str(lvl)][0, a, h, w] = -1
                             #distance, idx = classes_faiss[predicted_class].search(
                             #    np.array([feature.detach().cpu().numpy().astype(np.float32)]), 1)

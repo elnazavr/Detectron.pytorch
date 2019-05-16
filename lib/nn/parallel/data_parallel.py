@@ -49,7 +49,7 @@ class DataParallel(Module):
     # TODO: update notes/cuda.rst when this class handles 8+ GPUs well
 
     def __init__(self, module, device_ids=None, output_device=None, dim=0, 
-                 cpu_keywords=[], minibatch=False, batch_outputs=True):
+                 cpu_keywords=[], minibatch=False, batch_outputs=True, bbbp=False):
         super(DataParallel, self).__init__()
 
         if not torch.cuda.is_available():
@@ -58,9 +58,12 @@ class DataParallel(Module):
             return
 
         if device_ids is None:
-            count_device_id = 1
-            if torch.cuda.device_count()>1:
-                count_device_id = torch.cuda.device_count()-1
+            if bbbp:
+                count_device_id = 1
+                if torch.cuda.device_count()>1:
+                    count_device_id = torch.cuda.device_count()-1
+            else:
+                count_device_id = torch.cuda.device_count()
             device_ids = list(range(count_device_id))
         if output_device is None:
             output_device = device_ids[0]
