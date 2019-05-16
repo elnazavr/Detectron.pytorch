@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="1,4"
+os.environ["CUDA_VISIBLE_DEVICES"]="4,5"
 
 import numpy as np
 import yaml, time
@@ -176,13 +176,13 @@ def main():
 
 
     ### Adaptively adjust some configs ##
-    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
-    if args.batch_size is None:
-        args.batch_size = original_batch_size
     if args.bbbp:
         cfg.NUM_GPUS = torch.cuda.device_count() - 1
+    original_batch_size = cfg.NUM_GPUS * cfg.TRAIN.IMS_PER_BATCH
+    args.batch_size = original_batch_size
     assert (args.batch_size % cfg.NUM_GPUS) == 0, \
         'batch_size: %d, NUM_GPUS: %d' % (args.batch_size, cfg.NUM_GPUS)
+
     cfg.TRAIN.IMS_PER_BATCH = args.batch_size // cfg.NUM_GPUS
     print('Batch size change from {} (in config file) to {}'.format(
         original_batch_size, args.batch_size))
@@ -190,6 +190,7 @@ def main():
 
     if args.num_workers is not None:
         cfg.DATA_LOADER.NUM_THREADS = args.num_workers
+    cfg.DATA_LOADER.NUM_THREADS = cfg.NUM_GPUS
     print('Number of data loading threads: %d' % cfg.DATA_LOADER.NUM_THREADS)
 
     ### Adjust learning based on batch size change linearly
@@ -251,20 +252,19 @@ def main():
 
 
     sampler = MinibatchSampler(ratio_list, ratio_index)
-    if len(cfg.TRAIN.DATASETS)>1:
-        args.batch_size = 1
+    #if len(cfg.TRAIN.DATASETS)>1:
+    #    args.batch_size = 1
 
     dataset = RoiDataLoader(
         roidb,
         cfg.MODEL.NUM_CLASSES,
         training=True)
 
-
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
         sampler=sampler,
-        #num_workers=cfg.DATA_LOADER.NUM_THREADS,
+        num_workers=cfg.DATA_LOADER.NUM_THREADS,
         collate_fn=collate_minibatch)
 
     if args.bbbp:
@@ -275,10 +275,10 @@ def main():
         )
         dataloader_groundtruth = torch.utils.data.DataLoader(
             dataset_groundtruth,
-            batch_size=2,
+            batch_size=args.batch_size,
             sampler=sampler,
-            #num_workers=cfg.DATA_LOADER.NUM_THREADS,
-            collate_fn=collate_minibatch2)
+            num_workers=cfg.DATA_LOADER.NUM_THREADS,
+            collate_fn=collate_minibatch)
 
     assert_and_infer_cfg()
 
@@ -344,7 +344,7 @@ def main():
     lr = optimizer.param_groups[0]['lr']  # lr of non-bias parameters, for commmand line outputs.
 
     maskRCNN = mynn.DataParallel(maskRCNN, cpu_keywords=['im_info', 'roidb'],
-                                 minibatch=True)
+                                 minibatch=True, bbbp=args.bbbp)
 
     print(maskRCNN)
     ### Training Setups ###
@@ -398,7 +398,7 @@ def main():
                 #classes_faiss, dataset_idx_to_classes = create_dbs_for_classes(feature_db)
                 median_distance_class = find_threhold_for_each_class(classes_faiss, feature_db, k_neighbours=5)
                 print("Median distance class", median_distance_class)
-            maskRCNN.training = True
+                maskRCNN.training = True
 
             # adjust learning rate
             if args.lr_decay_epochs and args.epoch == args.lr_decay_epochs[0] and args.start_iter == 0:
@@ -411,14 +411,14 @@ def main():
                     if key != 'roidb': # roidb is a list of ndarrays with inconsistent length
                         input_data[key] = list(map(Variable, input_data[key]))
                 training_stats.IterTic()
-                input_data['only_bbox'] = [False]
-                input_data['bbbp'] = [args.bbbp]
                 if args.bbbp:
-                    input_data['classes_faiss'] = [classes_faiss]
-                    input_data['dataset_to_classes'] = [dataset_to_classes]
-                    input_data['dataset_idx_to_classes'] = [dataset_idx_to_classes]
-                    input_data['median_distance_class'] = [median_distance_class]
-                    input_data['C'] = [list(C)]
+                    input_data['classes_faiss'] = [classes_faiss] * cfg.DATA_LOADER.NUM_THREADS
+                    input_data['dataset_to_classes'] = [dataset_to_classes] * cfg.DATA_LOADER.NUM_THREADS
+                    input_data['dataset_idx_to_classes'] = [dataset_idx_to_classes] * cfg.DATA_LOADER.NUM_THREADS
+                    input_data['median_distance_class'] = [median_distance_class] * cfg.DATA_LOADER.NUM_THREADS
+                    input_data['C'] = [list(C)] * cfg.DATA_LOADER.NUM_THREADS
+                    input_data['bbbp'] = [args.bbbp] * cfg.DATA_LOADER.NUM_THREADS
+
                 net_outputs = maskRCNN(**input_data)
 
                 training_stats.UpdateIterStats(net_outputs)
@@ -436,6 +436,7 @@ def main():
                     end_time = time.time()
                     print("Finished 100", end_time-start_time)
                     log_training_stats(training_stats, global_step, lr)
+                    start_time = end_time
 
 
                 global_step += 1
@@ -478,41 +479,37 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
     start_time, end_time = time.time(), time.time()
     fucked_up_indecies = []
     print("Begin working with database")
-    for val_data in zip(dataloader_groundtruth):
-
+    for args.step, val_data in zip(range(args.start_iter, args.iters_per_epoch), dataloader_groundtruth):
         start_time = time.time()
-
-
-        val_data = val_data[0]
         for key in val_data:
             if key != 'roidb':  # roidb is a list of ndarrays with inconsistent length
                 val_data[key] = list(map(Variable, val_data[key]))
 
-        val_data["only_bbox"] = [True]
+        val_data["only_bbox"] = [True] * cfg.DATA_LOADER.NUM_THREADS
         before_maskRCNN_time = time.time()
         print("befor  Mask Rcnn", k, "time", before_maskRCNN_time - start_time)
         net_val_outputs = maskRCNN(**val_data)
         after_mask_rcnn = time.time()
         print("after mask Rcnn", k, "time", after_mask_rcnn - before_maskRCNN_time)
-
-        ground_truth_outputs = net_val_outputs['ground_truth']
-        roidb = list(map(lambda x: blob_utils.deserialize(x)[0], val_data["roidb"][0]))
-        for i in ground_truth_outputs.keys():
+        ground_truth_outputs = net_val_outputs['ground_truth'][0]
+        roidb = list(map(lambda x: blob_utils.deserialize(np.asarray(x))[0], val_data["roidb"]))
+        count = 0;
+        for i in range(len(roidb)):
             image_idx = int(os.path.splitext(os.path.basename(roidb[i]["image"]))[0])
             if image_idx in images:
                 print("Again the image")
                 continue
             images.append(image_idx)
-            features_gt = ground_truth_outputs[i]["features"].data.cpu().numpy().astype("float32")
             bboxes_gt = roidb[i]["boxes"]
-            N_instances = len(features_gt)
+            N_instances = len(bboxes_gt)
+            features_gt = ground_truth_outputs[count: count+N_instances].data.cpu().numpy().astype("float32")
+            count = count+N_instances
             classes = roidb[i]["gt_classes"]
             classes = [[cl] for cl in classes]
             db_idx = image_to_idx[image_idx]
             if feature_db[db_idx,1] == roidb[i]['dataset_idx']:
                 feature_db[db_idx: db_idx + N_instances, 2:] = np.concatenate([classes, bboxes_gt, features_gt], axis=1)
             else:
-                print(db_idx)
                 fucked_up_indecies.append(db_idx)
 
         end_time = time.time()
@@ -586,7 +583,8 @@ def create_faiss(dimension=1024):
 
     cfg = faiss.GpuIndexFlatConfig()
     cfg.useFloat16 = False
-    cfg.device = 1
+    cfg.device = torch.cuda.device_count() - 1
+    print("Device is ", cfg.device)
     faiss_db = faiss.GpuIndexFlatL2(faiss.StandardGpuResources(), dimension, cfg)
     return faiss_db
 
@@ -613,7 +611,6 @@ def create_dbs_for_datasets(feature_db, classes_faiss=None):
     dataset_idx_to_classes = {}
     if classes_faiss is None:
         classes_faiss = {}
-    import  ipdb; ipdb.set_trace()
     for dataset_id in set_datasets:
         dataset_idx_to_classes[dataset_id] = []
         indecies = np.where(feature_db[:,1]==dataset_id)[0]
