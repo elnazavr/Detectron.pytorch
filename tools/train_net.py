@@ -11,7 +11,7 @@ import resource
 import traceback
 import logging
 from collections import defaultdict
-os.environ["CUDA_VISIBLE_DEVICES"]="4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"]="6,7"
 
 import numpy as np
 import yaml, time
