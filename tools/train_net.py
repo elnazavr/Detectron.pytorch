@@ -360,7 +360,7 @@ def main():
     lr = optimizer.param_groups[0]['lr']  # lr of non-bias parameters, for commmand line outputs.
 
     maskRCNN = mynn.DataParallel(maskRCNN, cpu_keywords=['im_info', 'roidb'],
-                                 minibatch=True)
+                                 minibatch=True, bbbp=args.bbbp)
 
     print(maskRCNN)
     ### Training Setups ###
@@ -488,7 +488,7 @@ def update_db(args, dataloader_groundtruth, maskRCNN, image_to_idx, feature_db, 
     images = []
     maskRCNN.training = False
     output_path = os.path.join(output_dir,"feature_db_train" + str(args.epoch))
-    if os.path.exists(output_path+".npy"):
+    if os.path.exists(output_path+".npy") or os.path.exists(os.path.realpath(output_path+".npy")):
         print("Reading from db")
         return np.load(output_path+".npy")
     start_time, end_time = time.time(), time.time()
