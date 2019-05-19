@@ -285,21 +285,27 @@ def define_all_classes(datasets_name):
     :return:
     """
     continious_id_to_name, names_to_continioues_id_to, coco_id_to_continious_id_to, name_to_coco_id = {}, {}, {}, {}
-    for dataset_idx, dataset_name in enumerate(datasets_name):
-        ds = JsonDataset(dataset_name, dataset_idx)
+    dataset_to_classes = {}
+    for idx, dataset_name in enumerate(datasets_name):
+        ds = JsonDataset(dataset_name)
         cats_dict = ds.COCO.cats
+        dataset_to_classes[idx] = {}
+        count = 1
         for key,value in cats_dict.items():
             if value["name"] not in continious_id_to_name.values():
-                N = len(continious_id_to_name) +1
+                N = len(continious_id_to_name) + 1
                 continious_id_to_name[N] = value["name"]
                 names_to_continioues_id_to[value["name"]] = N
                 coco_id_to_continious_id_to[value["id"]] = N
                 name_to_coco_id[value["name"]] = value["id"]
+                dataset_to_classes[idx][count] = N
+                count+=1
     print("NAMES", name_to_coco_id)
     return {"continious_id_to_name": continious_id_to_name,
             "names_to_continioues_id_to": names_to_continioues_id_to,
             "coco_id_to_continious_id_to": coco_id_to_continious_id_to,
-            "name_to_coco_id": name_to_coco_id}
+            "name_to_coco_id": name_to_coco_id,
+            "dataset_to_classes": dataset_to_classes}
 
 
 def change_ids(ds, dict_combined):
