@@ -107,7 +107,6 @@ def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None, combin
         timers['misc_keypoints'].toc()
     else:
         cls_keyps = None
-    print("Image has predictions", len(scores))
 
     return cls_boxes, cls_segms, cls_keyps
 
