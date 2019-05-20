@@ -54,6 +54,8 @@ def parse_args():
         action='store_true')
     parser.add_argument(
         '--vis', dest='vis', help='visualize detections', action='store_true')
+    parser.add_argument(
+        '--bbbp', action='store_true')
 
     return parser.parse_args()
 
