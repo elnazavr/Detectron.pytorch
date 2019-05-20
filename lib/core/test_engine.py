@@ -94,7 +94,7 @@ def run_inference(
 
     def result_getter():
         datasets_name = list(cfg.TRAIN.DATASETS)
-        dict_combined = define_all_classes(datasets_name)
+        dict_combined = define_all_classes(cfg.TRAIN.DATASETS)
         if is_parent:
             # Parent case:
             # In this case we're either running inference on the entire dataset in a
@@ -153,7 +153,12 @@ def test_net_on_dataset(
         combined_cats_name_to_id = {}):
     """Run inference on a dataset."""
     dataset = JsonDataset(dataset_name, -1)
-    change_ids(dataset, combined_cats_name_to_id)
+    print(dataset.classes,
+        dataset.category_to_id_map,
+        dataset.json_category_id_to_contiguous_id,
+        dataset.contiguous_category_id_to_json_id)
+    if args.bbbp:
+        change_ids(dataset, combined_cats_name_to_id)
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
@@ -236,8 +241,9 @@ def test_net(
     """
     assert not cfg.MODEL.RPN_ONLY, \
         'Use rpn_generate to generate proposals from RPN-only models'
+    print(args)
     roidb, dataset, start_ind, end_ind, total_num_images = get_roidb_and_dataset(
-        dataset_name, proposal_file, ind_range, combined_cats_name_to_id
+        dataset_name, proposal_file, ind_range, combined_cats_name_to_id, args.bbbp
     )
     roidb = roidb[0]
     print("Length of roidb", len(roidb))
@@ -353,12 +359,13 @@ def initialize_model_from_cfg(args, gpu_id=0):
     return model
 
 
-def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_name_to_id ={}):
+def get_roidb_and_dataset(dataset_name, proposal_file, ind_range, combined_cats_name_to_id ={}, bbbp=False):
     """Get the roidb for the dataset specified in the global cfg. Optionally
     restrict it to a range of indices if ind_range is a pair of integers.
     """
     dataset = JsonDataset(dataset_name, -1)
-    change_ids(dataset, combined_cats_name_to_id)
+    if bbbp:
+        change_ids(dataset, combined_cats_name_to_id)
 
     if cfg.TEST.PRECOMPUTED_PROPOSALS:
         assert proposal_file, 'No proposal file given'
