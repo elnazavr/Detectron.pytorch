@@ -111,6 +111,12 @@ DATASETS = {
         ANN_FN:
             _DATA_DIR + '/coco/annotations/instances_val2017.json',
     },
+    'coco_2017_val_debug':{
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/annotations/debug_instances_val2017.json',
+    },
     'coco_2017_test': {  # 2017 test uses 2015 test images
         IM_DIR:
             _DATA_DIR + '/coco/images/test2015',

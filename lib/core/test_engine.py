@@ -51,6 +51,7 @@ from utils.timer import Timer
 logger = logging.getLogger(__name__)
 
 
+
 def get_eval_functions():
     # Determine which parent or child function should handle inference
     if cfg.MODEL.RPN_ONLY:
@@ -162,7 +163,7 @@ def test_net_on_dataset(
     test_timer = Timer()
     test_timer.tic()
     if multi_gpu:
-        num_images = len(dataset.get_roidb())
+        num_images = len(dataset.get_roidb()[0])
         all_boxes, all_segms, all_keyps = multi_gpu_test_net_on_dataset(
             args, dataset_name, proposal_file, num_images, output_dir
         )

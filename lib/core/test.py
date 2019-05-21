@@ -76,9 +76,13 @@ def im_detect_all(model, im, box_proposals=None, timers=None, roidb=None, combin
     # (they are not separated by class) (numpy.ndarray)
     # cls_boxes boxes and scores are separated by class and in the format used
     # for evaluating results
+    #import time;
+    #start_time = time.time()
     timers['misc_bbox'].tic()
+    #timers['misc_bbox'].tic()
     scores, boxes, cls_boxes = box_results_with_nms_and_limit(scores, boxes,  dataset_idx=-1, combined_cats_name_to_id=combined_cats_name_to_id)
     timers['misc_bbox'].toc()
+    #print("NMS", time.time() -start_time)
 
     if cfg.MODEL.MASK_ON and boxes.shape[0] > 0:
         timers['im_detect_mask'].tic()
@@ -149,16 +153,19 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=N
     else:
         inputs['data'] = [torch.from_numpy(inputs['data'])]
         inputs['im_info'] = [torch.from_numpy(inputs['im_info'])]
-        inputs["roidb"] = [blob_utils.serialize(roidb)]
-
-
+        #inputs["roidb"] = [blob_utils.serialize(roidb)]
+    #import time;
+    #stat_time = time.time()
     return_dict = model(**inputs)
+    #model_time = time.time()
+
+    #print("Model run:", model_time - stat_time )
 
     if cfg.MODEL.FASTER_RCNN:
         rois = return_dict['rois'].data.cpu().numpy()
         # unscale back to raw image space
         boxes = rois[:, 1:5] / im_scale
-
+    #stat_time = time.time()
     scores = [return_dict['cls_score'][i].data.cpu().numpy().squeeze() for i in range(len(cfg.MODEL.NUM_CLASSES))]
     scores = [scores[i].reshape([-1, scores[i].shape[-1]]) for i in range(len(cfg.MODEL.NUM_CLASSES))]
     if cfg.TEST.BBOX_REG:
@@ -186,6 +193,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=N
         # Map scores and predictions back to the original set of boxes
         scores = scores[inv_index, :]
         pred_boxes = pred_boxes[inv_index, :]
+    #print("Box manipulation:", time.time() - stat_time)
 
     #return scores_values[0][scores_max_datasets], np.array(boxes),
     return scores, pred_boxes, im_scale, return_dict['blob_conv']
