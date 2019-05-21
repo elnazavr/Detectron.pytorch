@@ -241,6 +241,12 @@ DATASETS = {
         DEVKIT_DIR:
             _DATA_DIR + '/voc/VOCdevkit/VOC2012/'
     },
+    'debug_coco_val2017':{
+        IM_DIR:
+            _DATA_DIR + '/coco/val2017',
+        ANN_FN:
+            _DATA_DIR + '/coco/annotations/debug_instances_val2017.json',
+    },
     'coco2017_part0_val': {
         IM_DIR:
             _DATA_DIR + '/coco/val2017',
