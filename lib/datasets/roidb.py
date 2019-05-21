@@ -320,7 +320,7 @@ def change_ids(ds, dict_combined):
     for name, continious_ds_id in names_to_continioues_id_to.items():
         coco_cat_id = name_to_coco_id[name]
         ds.classes[continious_ds_id] = name
-        ds.category_to_id_map[name] = continious_ds_id
+        ds.category_to_id_map[name] = coco_cat_id
         ds.json_category_id_to_contiguous_id[coco_cat_id] = continious_ds_id
         ds.contiguous_category_id_to_json_id[continious_ds_id] = coco_cat_id
     """
