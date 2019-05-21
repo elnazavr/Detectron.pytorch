@@ -298,7 +298,9 @@ def define_all_classes(datasets_name):
                 coco_id_to_continious_id_to[value["id"]] = N
                 name_to_coco_id[value["name"]] = value["id"]
                 dataset_to_classes[idx][count] = N
-                count+=1
+            else:
+                dataset_to_classes[idx][count] = names_to_continioues_id_to[value["name"]]
+            count+=1
     print("NAMES", name_to_coco_id)
     return {"continious_id_to_name": continious_id_to_name,
             "names_to_continioues_id_to": names_to_continioues_id_to,
