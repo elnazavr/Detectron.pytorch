@@ -139,20 +139,19 @@ class Generalized_RCNN(nn.Module):
             for p in self.Conv_Body.parameters():
                 p.requires_grad = False
 
-    def forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
+    def forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, dataset_idx=None, **rpn_kwargs):
         if cfg.PYTORCH_VERSION_LESS_THAN_040:
             return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
         else:
             with torch.set_grad_enabled(self.training):
-                return self._forward(data, im_info, roidb, only_bbox, image_to_idx, **rpn_kwargs)
+                return self._forward(data, im_info, roidb, only_bbox, image_to_idx, dataset_idx, **rpn_kwargs)
 
 
-    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, **rpn_kwargs):
+    def _forward(self, data, im_info, roidb=None, only_bbox=None, image_to_idx=None, dataset_idx = -1, **rpn_kwargs):
         im_data = data
         if self.training:
             roidb = list(map(lambda x: blob_utils.deserialize(x)[0], roidb))
-        else:
-            roidb = blob_utils.deserialize(roidb)
+
 
         device_id = im_data.get_device()
 
@@ -203,7 +202,7 @@ class Generalized_RCNN(nn.Module):
             if self.training:
                 idx = roidb[0]["dataset_idx"]
             else:
-                idx = roidb["dataset_idx"]
+                idx = dataset_idx
             cls_score, bbox_pred = self.Box_Outs(box_feat, idx)
             if self.training:
 

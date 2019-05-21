@@ -150,7 +150,7 @@ def im_detect_bbox(model, im, target_scale, target_max_size, boxes=None, roidb=N
     else:
         inputs['data'] = [torch.from_numpy(inputs['data'])]
         inputs['im_info'] = [torch.from_numpy(inputs['im_info'])]
-        inputs["roidb"] = [blob_utils.serialize(roidb)]
+        inputs["dataset_idx"] = [roidb["dataset_idx"]]
 
 
     return_dict = model(**inputs)
