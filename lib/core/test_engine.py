@@ -103,12 +103,14 @@ def run_inference(
             all_results = {}
             for i in range(len(cfg.TEST.DATASETS)):
                 dataset_name, proposal_file = get_inference_dataset(i)
-                output_dir = args.output_dir
+                output_dir = os.path.join(args.output_dir, dataset_name)
+                if not os.path.exists(output_dir):
+                    os.mkdir(output_dir)
                 results = parent_func(
                     args,
                     dataset_name,
                     proposal_file,
-                    os.path.join(output_dir, dataset_name),
+                    output_dir,
                     multi_gpu=multi_gpu_testing,
                     combined_cats_name_to_id = dict_combined
                 )
